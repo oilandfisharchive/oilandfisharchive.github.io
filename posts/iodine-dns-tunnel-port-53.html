@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Iodine DNS Tunnel on Port 53</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Iodine DNS Tunnel on Port 53</h1>
+            <p>Iodine tunnels your network activity as DNS requests on port 53. This can be useful when all other ports are blocked or censored. The name Iodine was suggested by
+            the initial letters of “IP over DNS.” By a happy coincidence, the element Iodine has atomic number 53, which just so happens to be the port number for DNS.</p>
+            <p>To construct an Iodine tunnel, you will need:</p>
+            <ul>
+                <li>A domain name (which we will give as <code>example.com</code> in our examples)</li>
+                <li>A server with a public IP address (which we will give as <code>xx.xx.xx.xx</code> in our examples)</li>
+                <li>A client PC</li>
+            </ul>
+            <p>In this tutorial, the server and client both run Debian 10. The same procedures will work for recent versions of Ubuntu.</p>
+            <h2><a id="1"></a>1. Create DNS Records</h2>
+            <h3><a id="1-1"></a>1.1. Select DNS Service</h3>
+            <p>Almost all domain name registrars provide a DNS service, but not all registrars let you create type <code>NS</code> records. If you cannot add <code>NS</code>
+            records add your registrar, you may need to switch your DNS service from your domain name registrar to <a href="https://www.cloudflare.com/" target="_blank">Cloudflare</a>.</p>
+            <h3><a id="1-2"></a>1.2. Choose Subdomain</h3>
+            <p>You are going to delegate the DNS service for one subdomain to your Iodine service. I suggest using a short name for the subdomain, so that as much space as
+            possible is available for the tunneled data.</p>
+            <p>In our examples, we will use <code>x</code> as the subdomain we delegate to Iodine.</p>
+            <h3><a id="1-3"></a>1.3. Create DNS Records</h3>
+            <p>At your DNS service (whether at your domain name registrar or elsewhere):</p>
+            <ul>
+                <li>Create an <code>A</code> record pointing from <code>nsx.example.com</code> to your server IP address of <code>xx.xx.xx.xx</code></li>
+                <li>Create an <code>NS</code> record pointing from subdomain <code>x</code> to host <code>nsx.example.com.</code> (which ends with a dot in most DNS systems)</li>
+            </ul>
+            <h3><a id="1-4"></a>1.4. Check DNS Records</h3>
+            <p>You will need to wait for your DNS changes to propagate. How long this takes depends on your DNS service. You can check that your DNS <code>A</code> record for your
+            server resolves by going to your PC and issuing these commands:</p>
+            <blockquote>
+                <code>sudo apt install dnsutils</code>
+            </blockquote>
+            <blockquote>
+                <code>dig +short nsx.example.com</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Set Up Server</h2>
+            <h3><a id="2-1"></a>2.1. Open Firewall</h3>
+            <p>SSH into your server.</p>
+            <p>We will open the firewall for port <code>53/udp</code> and <code>53/tcp</code>. The Iodine documentation implies that Iodine only actually uses <code>53/udp</code>,
+            but we will open both. The actual DNS protocol requires <code>53/tcp</code> to be available as a backup in case <code>53/udp</code> fails.</p>
+            <p>We also need to open the firewall for SSH input from the virtual network, for which we use IP addresses <code>10.10.0.0/24</code> in the examples in this
+            article.</p>
+            <p>Firewalls may be implemented with nftables, iptables, ufw, firewalld, or security groups. We will give the example of using nftables with a policy of drop on Debian
+            10. Here the commands would be:</p>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport 53 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 53 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 ip saddr 10.10.0.0/24 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <p>If you are not using nftables, then make the equivalent changes for your firewall.</p>
+            <h3><a id="2-2"></a>2.2. Obtain Source</h3>
+            <p>Download the source code for Iodine like this:</p>
+            <blockquote>
+                <code>apt install git -y</code>
+            </blockquote>
+            <blockquote>
+                <code>git clone https://github.com/yarrick/iodine.git</code>
+            </blockquote>
+            <h3><a id="2-3"></a>2.3. Compile and Install</h3>
+            <p>Compile Iodine on your server like this:</p>
+            <blockquote>
+                <code>apt install build-essential pkg-config zlib1g-dev man-db -y</code>
+            </blockquote>
+            <blockquote>
+                <code>cd iodine</code>
+            </blockquote>
+            <blockquote>
+                <code>make</code>
+            </blockquote>
+            <blockquote>
+                <code>make install</code>
+            </blockquote>
+            <p>After the install, the two binaries are installed to <code>/usr/local/sbin/</code>:</p>
+            <ul>
+                <li><code>iodine</code> for the client</li>
+                <li><code>iodined</code> for the server</li>
+            </ul>
+            <p>You can view documentation for Iodine by issuing the command:</p>
+            <blockquote>
+                <code>man iodine</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4. Generate Password</h3>
+            <p>The maximum password length for Iodine is 32 characters. Generate a strong password of length 32 like with this command:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>The 24 byte length is equivalent to 32 base-64 characters. You will obtain a result that looks like this:</p>
+            <blockquote>
+                <code>VjhNxS2kuNO5P3QpqOpsHQSJ8Kh/zq6S</code>
+            </blockquote>
+            <h3><a id="2-5"></a>2.5. Create Systemd Service File</h3>
+            <p>We will make Iodine run as a service. Create the systemd service file for <code>iodined</code>:</p>
+            <blockquote>
+                <code>vi /usr/lib/systemd/system/iodined.service</code>
+            </blockquote>
+            <p>Insert contents to run the Iodine server binary like this:</p>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=Iodine Server<br>
+                After=network.target<br>
+                <br>
+                [Service]<br>
+                Type=simple<br>
+                ExecStart=/usr/local/sbin/iodined -f -c -P VjhNxS2kuNO5P3QpqOpsHQSJ8Kh/zq6S 10.10.0.1 x.example.com<br>
+                Restart=on-failure<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <ul>
+                <li>Replace <code>VjhNxS2kuNO5P3QpqOpsHQSJ8Kh/zq6S</code> by your actual password</li>
+                <li>Replace <code>10.10.0.1</code> by a different private address if you are using this range for something else</li>
+                <li>Replace <code>x.example.com</code> by your actual subdomain name</li>
+            </ul>
+            <p>Save the file.</p>
+            <h3><a id="2-6"></a>2.6. Start Iodine</h3>
+            <p>Enable and start the Iodine service, so that it starts after every reboot:</p>
+            <blockquote>
+                <code>systemctl enable iodined</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start iodined</code>
+            </blockquote>
+            <h3><a id="2-7"></a>2.7. Carry Out Initial Checks</h3>
+            <p>Check that the service is active (running) like this:</p>
+            <blockquote>
+                <code>systemctl status iodined</code>
+            </blockquote>
+            <p>Check that the <code>dns0</code> virtual interface exists like this:</p>
+            <blockquote>
+                <code>ip a</code>
+            </blockquote>
+            <p>Check that Iodine is listening on port 53 like this:</p>
+            <blockquote>
+                <code>ss -tulpn | grep 53</code>
+            </blockquote>
+            <h2><a id="3"></a>3. Set Up Client</h2>
+            <h3><a id="3-1"></a>3.1. Obtain Source</h3>
+            <p>Download the source for Iodine like this:</p>
+            <blockquote>
+                <code>sudo apt install git -y</code>
+            </blockquote>
+            <blockquote>
+                <code>git clone https://github.com/yarrick/iodine.git</code>
+            </blockquote>
+            <h3><a id="3-2"></a>3.2. Compile and Install</h3>
+            <p>Compile Iodine on your client like this:</p>
+            <blockquote>
+                <code>sudo apt install build-essential pkg-config zlib1g-dev man-db -y</code>
+            </blockquote>
+            <blockquote>
+                <code>cd iodine</code>
+            </blockquote>
+            <blockquote>
+                <code>make</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo make install</code>
+            </blockquote>
+            <h3><a id="3-3"></a>3.3. Run</h3>
+            <p>Check that the Iodine binaries are in your path:</p>
+            <blockquote>
+                <code>echo $PATH</code>
+            </blockquote>
+            <p>The results should include <code>/usr/local/sbin</code>.</p>
+            <p>Install ifconfig:</p>
+            <blockquote>
+                <code>sudo apt install net-tools -y</code>
+            </blockquote>
+            <p>Run the Iodine client from the command line like this:</p>
+            <blockquote>
+                <code>sudo iodine -P VjhNxS2kuNO5P3QpqOpsHQSJ8Kh/zq6S x.example.com</code>
+            </blockquote>
+            <ul>
+                <li>Replace <code>VjhNxS2kuNO5P3QpqOpsHQSJ8Kh/zq6S</code> by your actual password</li>
+                <li>Replace <code>x.example.com</code> by your actual subdomain name</li>
+            </ul>
+            <p>You will see output like this:</p>
+            <blockquote>
+                <code>Opened dns0<br>
+                Opened IPv4 UDP socket<br>
+                Sending DNS queries for x.example.com to 192.168.1.254<br>
+                Autodetecting DNS query type (use -T to override).<br>
+                Using DNS type NULL queries<br>
+                Version ok, both using protocol v 0x00000502. You are user #0<br>
+                Setting IP of dns0 to 10.10.0.2<br>
+                Setting MTU of dns0 to 1130<br>
+                Server tunnel IP is 10.10.0.1<br>
+                Requesting server address to attempt raw UDP mode (skip with -r)<br>
+                Server is at xx.xx.xx.xx, trying raw login: (skip with -r) ....failed<br>
+                Using EDNS0 extension<br>
+                Switching upstream to codec Base128<br>
+                Server switched upstream to codec Base128<br>
+                No alternative downstream codec available, using default (Raw)<br>
+                Switching to lazy mode for low-latency<br>
+                Server switched to lazy mode<br>
+                Autoprobing max downstream fragment size... (skip with -m fragsize)<br>
+                768 ok.. 1152 ok.. ...1344 not ok.. ...1248 not ok.. ...1200 not ok.. 1176 ok.. 1188 ok.. will use 1188-2=1186<br>
+                Setting downstream fragment size to max 1186...<br>
+                Connection setup complete, transmitting data.<br>
+                Detaching from terminal...</code>
+            </blockquote>
+            <h3><a id="3-4"></a>3.4. Carry Out Initial Checks</h3>
+            <p>Check that the <code>dns0</code> virtual interface exists like this:</p>
+            <blockquote>
+                <code>ip a</code>
+            </blockquote>
+            <p>Check that you can reach your server through the tunnel like this:</p>
+            <blockquote>
+                <code>ping 10.10.0.1</code>
+            </blockquote>
+            <p>You will need to replace <code>10.10.0.1</code> by whatever IP address you chose for your server, if it was different from <code>10.10.0.1</code>.</p>
+            <p>Stop ping from running by pressing <strong>Ctrl</strong>+<strong>c</strong>.</p>
+            <h3><a id="3-5"></a>3.5. Set Up SSH Proxy Tunnel</h3>
+            <p>Iodine tunnels traffic over DNS unencrypted. Therefore we will set up an SSH tunnel within the DNS tunnel.</p>
+            <p>On the command line, SSH into your server through the DNS tunnel, with dynamic forwarding of port 1080 through the SSH tunnel:</p>
+            <blockquote>
+                <code>ssh -D 1080 root@10.10.0.1</code>
+            </blockquote>
+            <h3><a id="3-6"></a>3.6. Proxy Firefox</h3>
+            <p>On your PC, open Firefox. From the hamburger menu, select <strong>Preferences</strong> &gt; <strong>General</strong>. Scroll down to <strong>Network
+            Settings</strong>. Click the <strong>Settings</strong> button.</p>
+            <ol>
+                <li>Select <strong>Manual proxy configuration</strong></li>
+                <li>Enter SOCKS Host <code>127.0.0.1</code></li>
+                <li>Enter Port <code>1080</code></li>
+                <li>Select <strong>SOCKS v5</strong></li>
+                <li>Check the box for <strong>Proxy DNS when using SOCKS v5</strong></li>
+                <li>Click <strong>OK</strong></li>
+            </ol>
+            <h3><a id="3-7"></a>3.7. Test End to End</h3>
+            <p>Check the end-to-end functionality to confirm that Iodine, SSH, and Firefox are all configured correctly. Visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see the IP address of the server, not your local client.</p>
+            <h2><a id="4"></a>4. Get Help and Report Issues</h2>
+            <ul>
+                <li>Iodine has a detailed <a href="https://github.com/yarrick/iodine/blob/master/README.md" target="_blank">README on GitHub</a>
+                </li>
+                <li>There is a <a href="https://lists.wpkg.org/mailman/listinfo/iodine-users" target="_blank">mailing list for Iodine users</a>
+                </li>
+                <li>For genuine issues, you can post on the <a href="https://github.com/yarrick/iodine/issues" target="_blank">GitHub Issues section for Iodine</a>
+                </li>
+            </ul>
+            <p><em>Updated 2020-09</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

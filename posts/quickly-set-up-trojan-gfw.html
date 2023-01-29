@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quickly Set Up Trojan-GFW</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Quickly Set Up Trojan-GFW</h1>
+            <p>Trojan-GFW is billed as an unidentifiable mechanism that helps you bypass the Great Firewall (GFW).</p>
+            <p>This quick set-up procedure for a Trojan-GFW server uses the <code>johnrosen1</code> script from <a href="https://github.com/johnrosen1/vpstoolbox" target="_blank">GitHub</a>. It has been tested on Ubuntu 21.04. It should also work for recent versions of Debian.</p>
+            <p>After we’ve set up the server, we’ll test it with a Windows client.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <p>You need three prerequisites:</p>
+            <ul>
+                <li>a domain name</li>
+                <li>a virtual private server (VPS)</li>
+                <li>a DNS <code>A</code> record pointing from the server’s fully qualified domain name to its IP address</li>
+            </ul>
+            <p>SSH into your server as root.</p>
+            <p>Download and run the <code>johnrosen1</code> script by issuing this concatenated command (it is a single logical line that may span multiple physical lines on your
+            display):</p>
+            <blockquote>
+                <code>apt-get update &amp;& apt-get install sudo curl -y &amp;& curl -Ss https://raw.githubusercontent.com/johnrosen1/vpstoolbox/master/vps.sh | sudo bash</code>
+            </blockquote>
+            <p>After some initial installs, the system language setting box appears.</p><img src="../images/jr1-125.png" alt="Trojan-GFW johnrosen1 script language selection">
+            <p>Use the arrow keys on your keyboard to change the selection to <strong>English</strong>, if you prefer, and press <strong>Enter</strong>.</p>
+            <p>The VPS toolbox menu appears.</p><img src="../images/jr1-126.png" alt="Trojan-GFW johnrosen1 script VPS toolbox menu">
+            <p>Leave the selection at the default <code>install_standard</code>. Tab down to the bottom where it says 选择完毕,进入下一步 (after selecting, go to the next step). Press
+            <strong>Enter</strong>.</p>
+            <p>The VPS install checklist appears.</p><img src="../images/jr1-127.png" alt="Trojan-GFW johnrosen1 script install checklist">
+            <p>Leave the selections at the defaults for Trojan, Netdata, and TCP Fastopen. (If you did want to change the selections, you could use the arrow keys to move and the
+            space bar to toggle the selection.) Tab down to where it says 下一步 (next step). Press <strong>Enter</strong>.</p>
+            <p>You are asked for your server’s domain name.</p><img src="../images/jr1-128.png" alt="Trojan-GFW johnrosen1 script domain input">
+            <p>Type the fully qualified domain name for your server. Tab down to where it says Ok. Press <strong>Enter</strong>.</p>
+            <p>The script is going to set up two passwords for you. You are asked to choose a password for the first user.</p><img src="../images/jr1-129.png" alt=
+            "Trojan-GFW johnrosen1 script password1 input">
+            <p>Enter a password for the first user (no special characters). Tab down to where it says Ok. Press <strong>Enter</strong>.</p>
+            <p>You are asked to choose a password for a second user.</p><img src="../images/jr1-130.png" alt="Trojan-GFW johnrosen1 script password2 input">
+            <p>Enter a password for a second user, or leave it blank for a randomly generated password. Tab down to where it says Ok. Press <strong>Enter</strong>.</p>
+            <p>You are asked how you want to validate your request for an SSL certificate for this server.</p><img src="../images/jr1-131.png" alt=
+            "Trojan-GFW johnrosen1 script issue TLS certificate">
+            <p>Leave the selection at <code>HTTP</code>, and press <strong>Enter</strong>.</p>
+            <p>The installation proceeds. You will see messages appear on your terminal. When the installation is done, the install success message appears.</p><img src=
+            "../images/jr1-132.png" alt="Trojan-GFW johnrosen1 script install success">
+            <p>Press <strong>Enter</strong>.</p>
+            <p>The Trojan links are displayed. They look like this:</p>
+            <blockquote>
+                <code>trojan://abcde12345@fq.domain.name:443</code>
+            </blockquote>
+            <p>Copy the <code>trojan://</code> URLs to a Windows text editor such as Notepad. You will need the first <code>trojan://</code> URL in a moment when you test the
+            server with a Windows client.</p>
+            <h2><a id="2"></a>2. Windows Client</h2>
+            <p>Trojan-GFW and Igniter clients are available for many platforms. In this tutorial, we will use Windows to test the server.</p>
+            <p>Open a browser on your PC.</p>
+            <p>If you visit your server’s fully qualified domain name in an ordinary browser, you will see the camouflage website.</p><img src="../images/jr1-133.png" alt=
+            "Trojan-GFW johnrosen1 script hexo blog">
+            <p>Now in your browser go to <a href="https://github.com/2dust/v2rayN/releases" target="_blank">https://github.com/2dust/v2rayN/releases</a>. Identify the latest
+            release of V2RayN. Right now it is 4.18.</p>
+            <p>Download the zip file <code>v2rayN-Core.zip</code> for the latest release.</p>
+            <p>Extract all files in the zip file.</p><img src="../images/trojan-go-v2rayn-folder.png" alt="V2RayN folder showing extracted files">
+            <p>Launch <code>v2rayN.exe</code>. If Windows Defender SmartScreen appears, click <strong>More info</strong> and <strong>Run anyway</strong>.</p>
+            <p>Click on the icon in the system tray (bottom right of your desktop) to bring up the V2RayN panel. Under Help, you can choose the language English or Simplified
+            Chinese.</p><img src="../images/trojan-go-v2rayn-panel.png" alt="V2RayN panel">
+            <p>Copy the generated <code>trojan://</code> URL from the script’s output into your PC clipboard.</p>
+            <p>In V2RayN do <strong>Ctrl</strong>+<strong>v</strong>, or select <strong>Servers</strong> &gt; <strong>Import bulk URL from clipboard</strong>. Click
+            <strong>OK</strong>.</p>
+            <p>Select the server’s row, and press <strong>Enter</strong> to start the connection. Look for connection messages in the box at the bottom of your V2RayN panel.</p>
+            <p>You can either specify system-wide proxying in Windows <strong>Settings</strong>, or you can specify proxying at the level of the individual browser. We will use
+            the Firefox browser as our example.</p>
+            <p>Launch Firefox. From the hamburger menu, open <strong>Settings</strong>. Open the <strong>Network Settings</strong>. Configure Firefox like this:</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration</strong></li>
+                <li>SOCKS host <code>127.0.0.1</code></li>
+                <li>Port <code>10808</code> (note that this is the default in V2RayN, and not the common <code>1080</code>)</li>
+                <li>Select <strong>SOCKS v5</strong></li>
+                <li>Select <strong>Proxy DNS when using SOCKS v5</strong></li>
+            </ul><img src="../images/firefox-connection-settings.png" alt="Firefox network connection settings to use manual proxy configuration">
+            <p>Click <strong>OK</strong>.</p>
+            <p>Now visit <a href="https://www.dnsleaktest.com/" target="_blank">https://www.dnsleaktest.com</a> in Firefox to check that your are using your remote proxy server
+            and not your local PC to access the Internet.</p>
+            <h2><a id="a"></a>Appendix A. Server Configuration File</h2>
+            <p>The <code>johnrosen1</code> script creates a server configuration file <code>/usr/local/etc/trojan/config.json</code>. It will look something like this:</p>
+            <pre>{
+    "run_type": "server",
+    "local_addr": "::",
+    "local_port": 443,
+    "remote_addr": "127.0.0.1",
+    "remote_port": 81,
+    "password": [
+        "qwerty09876",
+        "i9orrxg9n"
+    ],
+    "log_level": 2,
+    "ssl": {
+        "cert": "/etc/certs/fq.domain.name_ecc/fullchain.cer",
+        "key": "/etc/certs/fq.domain.name_ecc/fq.domain.name.key",
+        "key_password": "",
+        "cipher": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384",
+        "cipher_tls13": "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384",
+        "prefer_server_cipher": true,
+        "alpn": [
+          "h2",
+            "http/1.1"
+        ],
+        "alpn_port_override": {
+            "h2": 82
+        },
+        "reuse_session": true,
+        "session_ticket": false,
+        "session_timeout": 600,
+        "plain_http_response": "",
+        "curves": "",
+        "dhparam": ""
+    },
+    "tcp": {
+        "prefer_ipv4": true,
+        "no_delay": true,
+        "keep_alive": true,
+        "reuse_port": false,
+        "fast_open": true,
+        "fast_open_qlen": 20
+    },
+    "mysql": {
+        "enabled": false,
+        "server_addr": "127.0.0.1",
+        "server_port": 3306,
+        "database": "trojan",
+        "username": "trojan",
+        "password": "qwerty09876",
+        "key": "",
+        "cert": "",
+        "ca": ""
+    }
+}
+</pre>
+            <h2><a id="b"></a>Appendix B. Client Configuration File</h2>
+            <p>The V2RayN GUI stores its server configurations internally in a file named <code>guiNConfig.json</code>. V2RayN converts this to a standard V2Ray client
+            configuration file named <code>config.json</code>. It will look something like this:</p>
+            <pre>{
+  "log": {
+    "access": "",
+    "error": "",
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "socks",
+      "port": 10808,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      },
+      "settings": {
+        "auth": "noauth",
+        "udp": true,
+        "allowTransparent": false
+      }
+    },
+    {
+      "tag": "http",
+      "port": 10809,
+      "listen": "127.0.0.1",
+      "protocol": "http",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      },
+      "settings": {
+        "udp": false,
+        "allowTransparent": false
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "trojan",
+      "settings": {
+        "servers": [
+          {
+            "address": "fq.domain.name",
+            "method": "chacha20",
+            "ota": false,
+            "password": "qwerty09876",
+            "port": 443,
+            "level": 1
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "allowInsecure": false
+        }
+      },
+      "mux": {
+        "enabled": false,
+        "concurrency": -1
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    },
+    {
+      "tag": "block",
+      "protocol": "blackhole",
+      "settings": {
+        "response": {
+          "type": "http"
+        }
+      }
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "api"
+        ],
+        "outboundTag": "api"
+      },
+      {
+        "type": "field",
+        "outboundTag": "proxy",
+        "domain": [
+          "geosite:google"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "domain": [
+          "domain:example-example.com",
+          "domain:example-example2.com"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "domain": [
+          "geosite:category-ads-all"
+        ]
+      }
+    ]
+  }
+}
+</pre>
+            <p><em>Updated 2021-06-15</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

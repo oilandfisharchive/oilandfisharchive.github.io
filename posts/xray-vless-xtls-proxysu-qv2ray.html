@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Xray with VLESS and XTLS using ProxySU and Qv2ray</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Xray with VLESS and XTLS using ProxySU and Qv2ray</h1>
+            <p>VLESS offers performance improvements over the original VMESS protocol. Xray (a fork of V2Ray) offers VLESS along with XTLS. XTLS reduces double-encryption,
+            resulting in better performance on low-power devices.</p>
+            <p>This page shows you how you can set up a Xray with VLESS and XTLS server, using the ProxySU graphical user interface (GUI) tool for Windows.</p>
+            <h2><a id="1"></a>1. ProxySU</h2>
+            <h3><a id="1-1"></a>1.1. Set Up DNS Record</h3>
+            <p>You will need a Linux server. We used Ubuntu 21.04 for testing the procedure on this page.</p>
+            <p>You must also own your own domain name, either free or paid.</p>
+            <p></p>
+            <p>Assuming you have a domain name and a server, create a DNS record pointing from the host name (fully qualified domain name) of the server to the server’s IP
+            address. If necessary, allow time for the DNS record to propagate.</p>
+            <h3><a id="1-2"></a>1.2. Download ProxySU</h3>
+            <p>On your Windows PC, locate the latest release of ProxySU at <a href="https://github.com/proxysu/ProxySU/releases" target="_blank">https://github.com/proxysu/ProxySU/releases</a>. At the time of writing, it is version 4.01.</p>
+            <p>Download the latest zip file. Extract the contents of the zip file.</p>
+            <h3><a id="1-3"></a>1.3. Run ProxySU</h3>
+            <p>Double-click on the ProxySU application, <code>ProxySuper.WPF.exe</code>. If Windows Defender Smart Screen appears, click <strong>More info</strong> then
+            <strong>Run anyway</strong>.</p><img src="../images/proxysu-run-anyway.png" alt="Windows Defender Smart Screen">
+            <p>If you need to change the display language, there is a language setting drop-down box at the top of the window.</p><img src="../images/proxysu-language.png" alt=
+            "ProxySU language selection">
+            <p>Click <strong>Add Host</strong> then <strong>Xray</strong>.</p><img src="../images/proxysu-add-host.png" alt="ProxySU Add Host Xray">
+            <p>In the left column, under <strong>Host</strong>, fill in your server’s IP address and login credentials.</p>
+            <p>In the middle column, check the box for <strong>VLESS over TCP with XTLS Preferred</strong>.</p>
+            <p>In the right column, for the <strong>Address</strong>, fill in your server’s fully qualified domain name. The <strong>UUID</strong> and <strong>Port</strong> fields
+            are generated for you.</p><img src="../images/proxysu-xray.png" alt="ProxySU for Xray">
+            <p>Click <strong>Save</strong> to save your configuration.</p>
+            <p>On your server’s row, click <strong>Install</strong>.</p>
+            <p>A message appears to say that logging into the server was successful:</p>
+            <blockquote>
+                <code>正在登陆服务器 ...<br>
+                登陆服务器成功！</code>
+            </blockquote>
+            <p>Underneath the messages, click <strong>Install</strong>. Wait while installation on your server proceeds. Status messages appear in the
+            <strong>XrayInstallerView</strong> window. The install process takes several minutes.</p><img src="../images/proxysu-login-successful.png" alt=
+            "ProxySU login successful and status messages">
+            <p>At the end, ProxySU displays a message to say installation is complete and you can now enjoy it.</p>
+            <blockquote>
+                <code>安装完成，尽情享用吧......</code>
+            </blockquote>
+            <p>Close the <strong>XrayInstallerView</strong> window.</p>
+            <h3><a id="1-4"></a>1.4. Save Parameters</h3>
+            <p>On the row for your server, click the <strong>ViewConfig</strong> button. The server parameters and a QR code are displayed.</p><img src=
+            "../images/proxysu-xrayinfoview.png" alt="ProxySU info view for Xray">
+            <h2><a id="2"></a>2. Qv2ray</h2>
+            <h3><a id="2-1"></a>2.1. Download and Install Qv2ray</h3>
+            <p>Open a browser on your PC, and go to <a href="https://github.com/Qv2ray/Qv2ray" target="_blank">https://github.com/Qv2ray/Qv2ray</a>. Click the
+            <strong>Releases</strong> link. Download the installer executable for Windows 64-bit. At the time of writing, the latest version is v2.7.0-pre2, and the executable for
+            Windows is <code>Qv2ray.v2.7.0-pre2.Windows-x64.exe</code>.</p>
+            <p>Run the Qv2ray installer executable. If Microsoft Defender SmartScreen appears, click <strong>More info</strong> and <strong>Run anyway</strong>. When asked if you
+            want to allow this app to make changes, click <strong>Yes</strong>.</p><img src="../images/qv2ray-setup.png" alt="Qv2ray setup wizard">
+            <p>Run the installer, accepting the defaults. Wait until the installer finishes. An icon for Qv2ray appears on your Windows desktop.</p>
+            <h3><a id="2-2"></a>2.2. Download and Install Xray</h3>
+            <p>Download the latest release of Xray-core for Windows 64-bit from <a href="https://github.com/XTLS/Xray-core/releases" target="_blank">https://github.com/XTLS/Xray-core/releases</a>. At the time of writing it is version 1.4.2, and the Windows version is named <code>Xray-windows-64.zip</code>.
+            Extract files from the zip file.</p><img src="../images/xray-windows.png" alt="Xray core for Windows">
+            <p>In Windows Explorer find your user id (e.g. <code>C:\\Users\\you</code>). If you don’t see your <code>AppData</code> folder, check the box <strong>View</strong>
+            &gt; <strong>Hidden items</strong> to display hidden items.</p>
+            <ol>
+                <li>Select the folder <code>AppData</code>.</li>
+                <li>Select <code>Local</code>.</li>
+                <li>Create a new folder, <code>qv2ray</code>, all lower case.</li>
+                <li>Within it, create a new folder, <code>vcore</code>, all lower case.</li>
+                <li>Copy all the extracted Xray files into <code>C:\\Users\\you\\AppData\\qv2ray\\vcore</code>.</li>
+            </ol>
+            <h3><a id="2-3"></a>2.3. Run Qv2ray</h3><img src="../images/proxysu-qv2ray.png" alt="Qv2Ray on Windows">
+            <p>Launch Qv2ray.</p>
+            <p>Specify your Xray core as follows:</p>
+            <ol>
+                <li>Click <strong>Preferences</strong>.</li>
+                <li>Click <strong>Kernel Settings</strong>.</li>
+                <li>Select the button for <strong>V2Ray Core Executable Path</strong>.</li>
+                <li>Navigate to the Xray executable you downloaded and copied into place, i.e. <code>C:\\Users\\you\\AppData\\qv2ray\\vcore\\xray.exe</code>.</li>
+                <li>The corresponding assets directory is <code>C:\\Users\\you\\AppData\\qv2ray\\vcore</code>.</li>
+                <li>Click <strong>OK</strong>.</li>
+            </ol><img src="../images/qv2ray-kernel-settings.png" alt="Qv2Ray Kernel Settings">
+            <p>Specify your Xray server as follows:</p>
+            <ol>
+                <li>Click <strong>New</strong>.</li>
+                <li>Fill in your server host name (fully qualified domain name).</li>
+                <li>The port is <code>443</code>.</li>
+                <li>The type is <code>VLESS</code>.</li>
+                <li>The UUID comes from what ProxySU set up for the server.</li>
+                <li>Flow is <code>xtls-rprx-direct</code>.</li>
+                <li>Encryption is <code>none</code>.</li>
+                <li>Click the tab for <strong>TLS Settings</strong>.</li>
+                <li>The Security Type is <code>XTLS</code>.</li>
+                <li>The Server Address (SNI) is your host name (fully qualified domain name).</li>
+                <li>Click <strong>OK</strong>.</li>
+            </ol><img src="../images/qv2ray-xray-settings.png" alt="Qv2Ray Xray Settings">
+            <h3><a id="2-4"></a>2.4. Test Qv2ray</h3>
+            <p>In Qv2ray, click <strong>Default Group</strong> to expand it. Select your server. Under <strong>Configuration Details</strong>, press the button to connect to your
+            server.</p><img src="../images/qv2ray-configuration-details.png" alt="Qv2Ray Configuration Details">
+            <p>In your browser, visit <a href="https://ipchicken.com/" target="_blank">https://ipchicken.com</a>. You should see the IP address of your server, not your local
+            PC.</p>
+            <p><em>Updated 2021-06-11</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

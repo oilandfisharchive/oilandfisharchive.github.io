@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Practical Anonymity for Political and Religious Dissidents</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Practical Anonymity for Political and Religious Dissidents</h1>
+            <p>This article demonstrates a practical approach to anonymity for political and religious dissidents. We install Linux with full disk encryption on a host computer.
+            We then install KVM for virtualization, followed by Whonix. Whonix consists of two virtual machines: a Gateway VM, which channels all your communications over Tor, and
+            a Workstation VM, where you do all your work. This arrangement strengthens your defenses against attempts to de-anonymize you.</p>
+            <h2><a id="1"></a>1. Plan</h2>
+            <p>We assume you start from a PC with Windows on it, or possibly another version of Linux.</p>
+            <p>Before you begin, you need to think about and fully understand the consequences of overwriting your operating system. Your original operating system will be
+            completely gone. Any applications you have installed will be gone. All your existing files, photos, and documents will be gone. There will be no possibility of
+            recovering.</p>
+            <p>You should copy any files you wish to keep to a DVD or USB stick before you overwrite your existing operating system, programs, and data.</p>
+            <p>Before you actually do anything practical, check also that your CPU supports virtualization. On Windows, do
+            <strong>Ctrl</strong>+<strong>Shift</strong>+<strong>Esc</strong> to bring up Task Manager. Go to the <strong>Performance</strong> tab. Check that the details include
+            the statement <code>Virtualization: Enabled</code>. You will also need to verify that you have a reasonably powerful CPU so that you can run the two Whonix virtual
+            machines, and you will also need to check that you have sufficient random-access memory (RAM). The Whonix website suggests some absolute <a href="https://www.whonix.org/wiki/System_Requirements" target="_blank">minimum system requirements</a>, but it is better if you have more than the bare minimum.</p>
+            <p>Finally, you need to inform yourself about the legalities and risks of using anonymization and censorship circumvention technologies in your country. As just one
+            example, do you understand the risks of correlation attacks?</p>
+            <p>Take all reasonable precautions. Avoid downloading files from unknown sources. Do not install add-ons in Tor Browser. Disable JavaScript. Watch out for social
+            engineering attempts. This article is only an introduction; a wealth of more advanced material is available on the <a href="https://www.whonix.org/wiki/Documentation" target="_blank">Whonix wiki</a>.</p>
+            <p>You may find that you need access to censored resources in order to complete this tutorial. If this happens to you, you may need to implement a temporary method of
+            bypassing censorship in order to download the materials for the tutorial. Examples of anonymous methods would be using V2Ray or Trojan with a public-interest server,
+            or using Tor with a public bridge.</p>
+            <h2><a id="2"></a>2. Obtain Linux ISO</h2>
+            <p>For your host operating system, we will give instructions for Debian and CentOS. (The process for <a href="https://getfedora.org/en/workstation/download" target="_blank">Fedora</a> would be similar to that for CentOS, and the process for <a href="https://ubuntu.com/download/desktop" target="_blank">Ubuntu</a> would be similar
+            to that for Debian.)</p>
+            <p>Note that CentOS 8 reaches end-of-life on December 31, 2021. Therefore Debian is recommended. Debian 10 is nicknamed “buster,” and Debian 11 is nicknamed
+            “bullseye.”</p>
+            <p>Download the ISO file for <a href="https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/" target="_blank">Debian</a> or <a href="http://isoredirect.centos.org/centos/8/isos/x86_64" target="_blank">CentOS</a> from the distribution’s website.</p>
+            <p>You can verify checksums in Windows with the PowerShell <code>Get-FileHash</code> cmdlet. For example:</p>
+            <blockquote>
+                <code>Get-FileHash -Algorithm SHA512 -Path C:\Users\john\Downloads\debian-10.9.0-amd64-DVD-1.iso</code>
+            </blockquote>
+            <p>You can verify GPG signatures on Windows with <a href="https://www.gpg4win.org/" target="_blank">Gpg4win</a>.</p>
+            <h2><a id="3"></a>3. Burn Linux ISO to DVD or USB Stick</h2>
+            <p>You will need a blank DVD or USB memory stick.</p>
+            <p>On Windows, you can easily burn an ISO file to DVD. Insert your writable blank DVD into your PC’s DVD drive. Open Windows File Explorer. Locate your ISO file,
+            right-click on the ISO file, and select <strong>Burn disk image</strong>.</p>
+            <p>For all other situations, you can burn the ISO file to the installation medium with Balena Etcher. Download and install <a href="https://www.balena.io/etcher" target="_blank">Balena Etcher</a>. Launch Balena Etcher, and burn your ISO file to your DVD or USB stick.</p>
+            <h2><a id="4"></a>4. Change Computer BIOS to Boot from DVD or USB Stick</h2>
+            <p>We are going to set the computer temporarily to boot from your DVD or USB stick instead of from the normal hard drive. We’ll also set a BIOS password to stop anyone
+            else getting into the BIOS. Note that, as a matter of principle, you should not rely on any single security technique. For example, although we will set a BIOS
+            password, you must also physically secure your computer to stop others from gaining access to it.</p>
+            <p>The procedure for getting into the BIOS/UEFI varies from model to model. The BIOS key set by your computer maker could be F1, F2, F10, F12, or DEL. You will need to
+            consult the manufacturer’s manual or website to find out which key to press to get into the BIOS/UEFI.</p>
+            <p>Once you are into the BIOS, you should set a BIOS password, if you have not done so already. This prevents unauthorized users from accessing your BIOS/UEFI.</p>
+            <p>Now set your computer to boot from DVD or USB stick as a higher priority than your hard drive.</p>
+            <p>Boot the computer from your installation medium (the DVD or USB stick).</p>
+            <h2><a id="5"></a>5. Install Linux</h2>
+            <p>We will give instructions for installing Debian or CentOS with full disk encryption.</p>
+            <h3><a id="5-1"></a>5.1. CentOS 8</h3>
+            <p>In the first part of the installation, you will specify the parameters you want for the install.</p>
+            <ol>
+                <li>Select your language (e.g. English, United States), and click <strong>Continue</strong>.</li>
+                <li>When the Installataion Summary screen appears, select <strong>Installation Destination</strong>.</li>
+                <li>Select your hard drive, so that a check mark appears on it.</li>
+                <li>Select <strong>Custom storage configuration</strong>.</li>
+                <li>Click <strong>Done</strong>.</li>
+            </ol>
+            <p>The Manual Partitioning screen appears.</p>
+            <p>For the mount points, click the link to create them automatically.</p><img src="../images/install-centos.png" alt="Install CentOS with full disk encryption">
+            <ol>
+                <li>For the / mount point, check the box for <strong>Encrypt</strong>.</li>
+                <li>For the /boot mount point, check the box for <strong>Encrypt</strong>.</li>
+                <li>For swap, check the box for <strong>Encrypt</strong>.</li>
+                <li>Click <strong>Done</strong>.</li>
+                <li>This is the part where you specify that you want encryption. A passphrase differs from a password in that it may contain spaces, as well as other characters.
+                Make sure you remember the passphrase you define! Enter and confirm the disk encryption passphrase, and click Save passphrase.</li>
+                <li>When the Summary of Changes appears, click <strong>Accept Changes</strong>.</li>
+            </ol>
+            <p>Now we set up networking.</p>
+            <ol>
+                <li>Select <strong>Network & Host Name</strong>.</li>
+                <li>Leave the Host Name at <code>localhost.localdomain</code>.</li>
+                <li>Toggle the Ethernet interface to the <strong>ON</strong> position.</li>
+                <li>Click <strong>Done</strong>.</li>
+            </ol>
+            <p>In the final part of the installation process, the installer actually does the install on the encrypted disk, based on the parameters you specified earlier on.</p>
+            <ol>
+                <li>Click <strong>Begin Installation</strong>.</li>
+                <li>Click <strong>Root Password</strong>.</li>
+                <li>Enter and confirm your desired root password, and click <strong>Done</strong>.</li>
+                <li>Click <strong>User Creation</strong></li>
+                <li>Enter your user full name, user name, password, and confirm password, and click <strong>Done</strong>.</li>
+            </ol>
+            <p>The install takes 30 minutes or so.</p>
+            <p>When you get a message to say CentOS Linux is successfully installed, remove the installation DVD or USB. Click <strong>Reboot</strong>.</p>
+            <h3><a id="5-2"></a>5.2. Debian 10+</h3>In the first part of the installation, you will specify the parameters you want for the install.
+            <ol>
+                <li>Select your preferred language (e.g. English), and click <strong>Continue</strong>.</li>
+                <li>Select your location (e.g. United States), and click <strong>Continue</strong>.</li>
+                <li>Select your keyboard (e.g. American English), and click <strong>Continue</strong>.</li>
+                <li>The installer sets up networking. Note that wired networking is more secure and private than wireless networking. After the installer sets up the networking,
+                enter a hostname (e.g. <code>debian</code>), and click <strong>Continue</strong>.</li>
+                <li>Enter a network domain name (e.g. <code>local.local</code>), and click <strong>Continue</strong>.</li>
+                <li>Enter and confirm your desired root password, and click <strong>Continue</strong>.</li>
+                <li>Enter and confirm a non-root user (e.g. <code>john</code>), and click <strong>Continue</strong>.</li>
+                <li>Enter a username (e.g. <code>john</code>), and click <strong>Continue</strong>.</li>
+                <li>Enter and confirm your desired non-root password, and click <strong>Continue</strong>.</li>
+                <li>After the clock set-up, specify your time zone (e.g. <code>Eastern</code>), and click <strong>Continue</strong>.</li>
+            </ol>
+            <p>Now you specify that you want full-disk encryption. You will be asked to choose a passphrase for your disk. A passphrase differs from a password in that it may
+            contain spaces, as well as other characters. Make sure you remember the passphrase you set up!</p><img src="../images/install-debian.png" alt=
+            "Install Debian with full disk encryption">
+            <ol>
+                <li>When the partition disks screen appears, use the down-arrow on your keyboard to reach the option <strong>Guided - use entire disk and set up encrypted
+                LVM</strong>. Click <strong>Continue</strong>.</li>
+                <li>Select the disk to partition, and click <strong>Continue</strong>.</li>
+                <li>For new users, select <strong>All files in one partition (recommended for new users)</strong>, and click <strong>Continue</strong>.</li>
+                <li>When asked if you want to write the changes to disks and configure LVM, change the radio button selection to <strong>Yes</strong>, and click
+                <strong>Continue</strong>.</li>
+                <li>The installer now overwites the partition with random data to prevent meta-information leaks. This can take a while for large disks.</li>
+                <li>When you are asked to enter and confirm a passphrase for disk encryption, choose a strong passphrase, and click <strong>Continue</strong>.</li>
+                <li>Confirm the size of your volume group to use for partitioning, and click <strong>Continue</strong>.</li>
+                <li>Select <strong>Finish partitioning and write changes to disk</strong>, and click <strong>Continue</strong>.</li>
+                <li>When asked if you want to format the partitions and write the changes to disk, change the radio button selection to <strong>Yes</strong>, and click
+                <strong>Continue</strong>.</li>
+            </ol>
+            <p>In the third part of the installation process, the installer actually does the install on to the encrypted disk you specified in the second part, based on the
+            parameters you specified in the first part.</p>
+            <ol>
+                <li>You don’t need a second DVD for the install, so when asked if you want to scan another CD or DVD, select <strong>No</strong>, and click
+                <strong>Continue</strong>.</li>
+                <li>When asked if you want to use a network mirror, select Yes, and click <strong>Continue</strong>.</li>
+                <li>Select a nearby country for your local mirror, and click <strong>Continue</strong>.</li>
+                <li>Enter a proxy server if you need one to reach the mirror (for most people it will be blank for none), and click <strong>Continue</strong>.</li>
+                <li>When asked if you want to participate in the package usage survey, select <strong>No</strong>, and click <strong>Continue</strong>.</li>
+                <li>For software selection, choose:
+                    <ul>
+                        <li>Debian desktop environment</li>
+                        <li>GNOME</li>
+                        <li>Standard system utilities</li>
+                    </ul>
+                </li>
+                <li>The package installation takes a while. When asked if you want to install the GRUB boot loader to the master boot record, put <strong>Yes</strong>, and click
+                <strong>Continue</strong>.</li>
+                <li>Select the hard disk where GRUB will be installed, and click <strong>Continue</strong>.</li>
+                <li>When installation is complete, click <strong>Continue</strong>.</li>
+                <li>Remove the installation DVD or USB.</li>
+            </ol>
+            <h2><a id="6"></a>6. Boot Computer</h2>
+            <p>Whenever you boot your host computer from now on, you will need to enter the passphrase to unlock your disk.</p><img src="../images/debian-unlock.png" alt=
+            "Unlock Debian full-disk encryption">
+            <p>The first time you boot a new CentOS installation, you need to accept the license agreement. Click <strong>License Information</strong>, check the accept box, click
+            <strong>Done</strong>, then click <strong>Finish Configuration</strong>.</p>
+            <p>Log in with your user name and user password.</p><img src="../images/debian-login.png" alt="Debian user login screen">
+            <p>The first time logging into CentOS, you will see some welcome screens. Toggle Location Services to <strong>OFF</strong>, and <strong>Skip</strong> specifying
+            accounts.</p>
+            <h2><a id="7"></a>7. Make Non-Root User an Administrator</h2>
+            <p>It is generally convenient to be able to issue administrative commands from your non-root user. We will therefore make the non-root user into a system
+            administrator.</p>
+            <p>Assuming you are using GNOME desktop, hit the “super” key (the one which often has a Windows logo on it). You can alternatively click on the word
+            <strong>Activities</strong> at the top left of the GNOME desktop.</p>
+            <p>Do a search for <code>terminal</code>. Select and launch the terminal application.</p>
+            <p>Temporarily switch from your non-root user to the root user by issuing the command:</p>
+            <blockquote>
+                <code>su -</code>
+            </blockquote>
+            <p>You will be prompted to enter the root password you chose when you installed the operating system.</p>
+            <p>Now add your user to the administrators’ group. Suppose the non-root user’s name is <code>john</code>. On CentOS, issue the command:</p>
+            <blockquote>
+                <code>usermod -a -G wheel john</code>
+            </blockquote>
+            <p>On Debian, issue the command:</p>
+            <blockquote>
+                <code>usermod -a -G sudo john</code>
+            </blockquote>
+            <p>The new group membership will not be effective until the next time <code>john</code> logs in.</p>
+            <p>You are still the root user at this point, so exit your root session:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <p>And exit the non-root session:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <p>Locate the power button at the top right of the GNOME desktop. Log out as the non-root user. (There should be no need to power off and restart the computer, but if
+            you run into problems running <code>sudo</code> commands, try rebooting.)</p>
+            <p>Now log back in again as the non-root user.</p>
+            <p>You should now be able to execute administrative commands in the terminal by prefixing them with the word <code>sudo</code>.</p>
+            <h2><a id="8"></a>8. Update System</h2>
+            <h3><a id="8-1"></a>8.1. Update</h3>
+            <p>Now is a good time to get your host system completely up to date for any software that has been updated since your ISO was created. Open the terminal application
+            again, and issue the appropriate command(s).</p>
+            <p>On CentOS:</p>
+            <blockquote>
+                <code>sudo yum update -y</code>
+            </blockquote>
+            <p>On Debian:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote><img src="../images/debian-update.png" alt="Debian sudo apt update &amp;&amp; sudo apt upgrade -y">
+            <p>You will need to enter your user password to gain <code>sudo</code> privileges.</p>
+            <p>When the update process finishes, all software packages on your system will be up to date.</p>
+            <h3><a id="8-2"></a>8.2. Install Firewall</h3>
+            <p>You should install and configure a firewall on your host that blocks all outside attempts to connect to it (unless you need to allow them, for some reason).</p>
+            <p></p>
+            <p>On CentOS, check if <code>firewalld</code> is already installed (<code>sudo systemctl status firewalld</code>), and if not, then install and start it now:</p>
+            <blockquote>
+                <code>sudo yum install firewalld -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl enable firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl start firewalld</code>
+            </blockquote>
+            <p>Still on CentOS, remove unnecessary services from public access:</p>
+            <blockquote>
+                <code>sudo firewall-cmd --permanent --zone=public --remove-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo firewall-cmd --permanent --zone=public --remove-service=cockpit</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo firewall-cmd --reload</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo firewall-cmd --zone=public --list-all</code>
+            </blockquote>
+            <p>On Debian (but see note below about problem with <code>nftables</code> and KVM):</p>
+            <blockquote>
+                <code>sudo apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl start nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo su -c 'nft list ruleset &gt; /etc/nftables.conf'</code>
+            </blockquote>
+            <p>Note: Using your own <code>nftables</code> rules combined with rules inserted automatically by KVM can result in a bug whereby the guest has no networking or no
+            Internet access, or you get an error on the host saying <code>table `filter' is incompatible, use 'nft' tool</code>. If you run into this problem, it can be safer to
+            revert to using <code>iptables</code> and implement host firewall rules like this:</p>
+            <blockquote>
+                <code>sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo iptables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo iptables -P INPUT DROP</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ip6tables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ip6tables -P INPUT DROP</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install iptables-persistent -y</code>
+            </blockquote>
+            <h2><a id="9"></a>9. Install KVM</h2>
+            <h3><a id="9-1"></a>9.1 Check for Virtualization</h3>
+            <p>Check again that your CPU supports virtualization. The CPU flag for Intel virtualization is <code>vmx</code>; the CPU flag for AMD virtualization is
+            <code>svm</code>. In a Linux terminal, enter the command:</p>
+            <blockquote>
+                <code>grep -E '(vmx|svm)' /proc/cpuinfo</code>
+            </blockquote>
+            <p>Make sure that one or the other shows up.</p>
+            <h3><a id="9-2"></a>9.2. Install KVM</h3>
+            <p>Install KVM and the virtual machine manager like this. On CentOS 8:</p>
+            <blockquote>
+                <code>sudo yum install virt-manager qemu-kvm libvirt -y</code>
+            </blockquote>
+            <p>On Debian 10+:</p>
+            <blockquote>
+                <code>sudo apt install virt-manager qemu-kvm libvirt-daemon-system -y</code>
+            </blockquote>
+            <p>Confirm that <code>libvirtd</code> is active and running:</p>
+            <blockquote>
+                <code>sudo systemctl status libvirtd</code>
+            </blockquote>
+            <p>To exit the status display, you may need to enter <code>q</code> for quit.</p>
+            <p>If <code>libvirtd</code> is not active and running, then enable and start it now:</p>
+            <blockquote>
+                <code>sudo systemctl enable libvirtd</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl start libvirtd</code>
+            </blockquote>
+            <p>Add your non-root user to the group that can manage virtual machines:</p>
+            <blockquote>
+                <code>sudo usermod -a -G libvirt john</code>
+            </blockquote>
+            <p>Since you have just enabled virtualization, it is advisable to reboot at this stage rather than simply logging off and logging on again.</p>
+            <p>Assuming you are running the GNOME desktop, click <strong>Activities</strong> or press the “super”key on your keyboard. Search for <code>virt</code>. Select and
+            launch <strong>Virtual Machine Manager</strong>, the graphical user interface for KVM.</p>
+            <p>The Virtual Machine Manager starts up. Right-click on the line for <code>QEMU/KVM</code>. Select <strong>Details</strong>. Select the <strong>Virtual
+            Networks</strong> tab. Make sure the default device, virbr0, is active. If it is not active, then open a terminal and enter the command:</p>
+            <blockquote>
+                <code>sudo virsh net-start default</code>
+            </blockquote>
+            <p>In the graphical user interface, make sure also that <code>virbr0</code> is set to Autostart on boot. If you have to manually check the box to specify autostart,
+            then also click the <strong>Apply</strong> button.</p><img src="../images/install-kvm.png" alt="Default virbr0 network in Virtual Machine Manager">
+            <p>Close the <strong>Connection Details</strong> window. You can also close the Virtual Machine Manager for now.</p>
+            <h2><a id="10"></a>10. Install Whonix</h2>
+            <p>Whonix consists of two virtual machines: the Whonix-Gateway and the Whonix-Workstation. The Gateway runs Tor and acts as a gateway to the Internet. The Workstation,
+            which is where you will do all your work, runs on a completely isolated network. All its communication outward is via the Gateway.</p>
+            <p>To learn more about Whonix (and security and anonymity in general), visit the <a href="https://www.whonix.org/wiki/Documentation" target="_blank">Whonix wiki</a>.</p>
+            <h3><a id="10-1"></a>10.1. Install GPG</h3>
+            <p>GNU Privacy Guard (GnuPG or GPG) is an open-source cryptographic software suite. It is used for encrypting, decrypting, and verifying communications. We will use it
+            to verify the Whonix download in the next step.</p>
+            <p>On CentOS, open a terminal and issue the command:</p>
+            <blockquote>
+                <code>sudo yum install gnupg</code>
+            </blockquote>
+            <p>On Debian:</p>
+            <blockquote>
+                <code>sudo apt install gnupg</code>
+            </blockquote>
+            <h3><a id="10-2"></a>10.2. Import Whonix Signing Key</h3>
+            <p>Open Firefox on your host. Download the Whonix signing key by entering <a href="https://www.whonix.org/hulahoop.asc" target="_blank">https://www.whonix.org/hulahoop.asc</a> in the address bar. By default, it will be stored in your <code>Downloads</code> directory with the name
+            <code>hulahoop.asc</code>.</p>
+            <p>Check the fingerprint of the Whonix signing key:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>gpg --keyid-format long --import --import-options show-only --with-fingerprint hulahoop.asc</code>
+            </blockquote>
+            <p>The output should read as follows:</p>
+            <blockquote>
+                <code>gpg: key 50C78B6F9FF2EC85: 1 signature not checked due to a missing key<br>
+                pub rsa4096/50C78B6F9FF2EC85 2018-11-26 [SCEA]<br>
+                Key fingerprint = 04EF 2F66 6D36 C354 058B 9DD4 50C7 8B6F 9FF2 EC85<br>
+                uid HulaHoop<br>
+                sub rsa4096/EB27D2F8CEE41ACC 2018-11-26 [SEA]</code>
+            </blockquote>
+            <p>If the output looks as above, then import the key into your GPG keyring:</p>
+            <blockquote>
+                <code>gpg --import hulahoop.asc</code>
+            </blockquote>The output from that last command should read as follows:<br>
+            <blockquote>
+                <code>gpg: key 50C78B6F9FF2EC85: 1 signature not checked due to a missing key<br>
+                gpg: key 50C78B6F9FF2EC85: public key "HulaHoop" imported<br>
+                gpg: Total number processed: 1<br>
+                gpg: imported: 1<br>
+                gpg: no ultimately trusted keys found</code>
+            </blockquote>
+            <h3><a id="10-3"></a>10.3. Download Whonix</h3>
+            <p>In Firefox, navigate to the <a href="https://www.whonix.org/wiki/KVM" target="_blank">Whonix KVM page</a>.</p>
+            <p>Scroll down to the section with the Whonix downloads. Download four files:</p>
+            <ul>
+                <li>The main Whonix download. It has a name such as <code>Whonix-XFCE-15.0.1.7.2.libvirt.xz</code>. This is a large download of over 1 GB.</li>
+                <li>The OpenPGP Signature of the main Whonix download. It has the same file name as the Whonix download, except with asc at the end. For example,
+                <code>Whonix-XFCE-15.0.1.7.2.libvirt.xz.asc</code>.</li>
+                <li>The SHA512 hash of the downloads. It has a name such as <code>Whonix-XFCE-15.0.1.7.2.sha512sums</code>.</li>
+                <li>The OpenPGP Signature of the SHA512 hash of the downloads. For example, <code>Whonix-XFCE-15.0.1.7.2.sha512sums.asc</code>.</li>
+            </ul>
+            <p>By default, all four files are saved in the same directory.</p><img src="../images/whonix-downloads.png" alt="Whonix downloads">
+            <h3><a id="10-4"></a>10.4. Verify Whonix Download</h3>
+            <p>We continue to use Whonix with XFCE version 15.0.1.7.2 for our sample file names. The version number may have changed by the time you run this tutorial.</p>
+            <p>Use the signature for the SHA512 hash to check the SHA512 hash:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>gpg --verify Whonix-XFCE-15.0.1.7.2.sha512sums.asc Whonix-XFCE-15.0.1.7.2.sha512sums</code>
+            </blockquote>
+            <p>The output should include a line:</p>
+            <blockquote>
+                <code>gpg: Good signature from "HulaHoop" [unknown]</code>
+            </blockquote>
+            <p>Do not worry about the warning:</p>
+            <blockquote>
+                <code>gpg: WARNING: This key is not certified with a trusted signature!<br>
+                gpg: There is no indication that the signature belongs to the owner.</code>
+            </blockquote>
+            <p>Display the expected SHA512 hash of the main download:</p>
+            <blockquote>
+                <code>cat Whonix-XFCE-15.0.1.7.2.sha512sums</code>
+            </blockquote>
+            <p>The output looks like this. The exact value of the hash will change for different versions of the Whonix download.</p>
+            <blockquote>
+                <code>30314c419a2a209a52e0900aef7cac510324f4259dbf48ba2effe845b8cc02d4f5841e86d68ed30b50684df2acf41569fe9e5d0c3cbf60b5698a58caf532d78e
+                Whonix-XFCE-15.0.1.7.2.libvirt.xz</code>
+            </blockquote>
+            <p>Now determine the actual SHA512 hash of the main download:</p>
+            <blockquote>
+                <code>openssl sha512 Whonix-XFCE-15.0.1.7.2.libvirt.xz</code>
+            </blockquote>
+            <p>It takes a few moments to run. Make sure that the expected sha512 hash and the actual sha512 hash are identical.</p>
+            <p>Now use the signature for the main Whonix download to verify the main Whonix download:</p>
+            <blockquote>
+                <code>gpg --verify Whonix-XFCE-15.0.1.7.2.libvirt.xz.asc Whonix-XFCE-15.0.1.7.2.libvirt.xz</code>
+            </blockquote>
+            <p>The output should include a line:</p>
+            <blockquote>
+                <code>gpg: Good signature from "HulaHoop" [unknown]</code>
+            </blockquote>
+            <p>Do not worry about the warning:</p>
+            <blockquote>
+                <code>gpg: WARNING: This key is not certified with a trusted signature!<br>
+                gpg: There is no indication that the signature belongs to the owner.</code>
+            </blockquote>
+            <h3><a id="10-5"></a>10.5. Extract Whonix</h3>
+            <p>If all your verification is successful, then extract the files from the main download:</p>
+            <blockquote>
+                <code>tar -xvf Whonix-XFCE-15.0.1.7.2.libvirt.xz</code>
+            </blockquote>
+            <p>This gives the following eight files:</p>
+            <ul>
+                <li><code>WHONIX_BINARY_LICENSE_AGREEMENT</code></li>
+                <li><code>WHONIX_DISCLAIMER</code></li>
+                <li><code>Whonix-Gateway-XFCE-15.0.1.7.2.qcow2</code></li>
+                <li><code>Whonix-Workstation-XFCE-15.0.1.7.2.qcow2</code></li>
+                <li><code>Whonix-Gateway-XFCE-15.0.1.7.2.xml</code></li>
+                <li><code>Whonix-Workstation-XFCE-15.0.1.7.2.xml</code></li>
+                <li><code>Whonix_external_network-15.0.1.7.2.xml</code></li>
+                <li><code>Whonix_internal_network-15.0.1.7.2.xml</code></li>
+            </ul>
+            <h3><a id="10-6"></a>10.6. Activate Virtual Networks</h3>
+            <p>This step needs to be done only once, and not after every Whonix upgrade.</p>
+            <p>Determine the names of the virtual networks. They are defined by the network XML files you downloaded and extracted:</p>
+            <blockquote>
+                <code>cat Whonix_external_network-15.0.1.7.2.xml</code>
+            </blockquote>
+            <blockquote>
+                <code>cat Whonix_internal_network-15.0.1.7.2.xml</code>
+            </blockquote>
+            <p>The names will probably be <code>Whonix-External</code> and <code>Whonix-Internal</code>. You will need these names in a moment. The bridge names will probably be
+            <code>virbr1</code> and <code>virbr2</code>.</p>
+            <p>Add the virtual networks for Whonix:</p>
+            <blockquote>
+                <code>sudo virsh -c qemu:///system net-define Whonix_external_network-15.0.1.7.2.xml</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo virsh -c qemu:///system net-define Whonix_internal_network-15.0.1.7.2.xml</code>
+            </blockquote>
+            <p>Activate the new virtual networks now and after every boot:</p>
+            <blockquote>
+                <code>sudo virsh -c qemu:///system net-autostart Whonix-External</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo virsh -c qemu:///system net-start Whonix-External</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo virsh -c qemu:///system net-autostart Whonix-Internal</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo virsh -c qemu:///system net-start Whonix-Internal</code>
+            </blockquote>
+            <p>To confirm all this, open the Virtual Machine Manager GUI. Right-click on the <code>QEMU/KVM</code> line. Select <strong>Details</strong>. Select the
+            <strong>Virtual Networks</strong> tab. You should see the two new networks have been added to the initial default virtual network.</p>
+            <h3><a id="10-7"></a>10.7. Create the Gateway and Workstation Virtual Machines</h3>
+            <p>When you launch the virtual machines, an error sometimes occurs, <code>Requested operation is not valid: blkio device weight is valid only for bfq or cfq
+            scheduler</code>. To prevent this error from happening, edit the file <code>Whonix-Gateway-XFCE-15.0.1.7.2.xml</code>. Delete the three lines:</p>
+            <blockquote>
+                <code>&lt;blkiotune&gt;<br>
+                &lt;weight&gt;250&lt;/weight&gt;<br>
+                &lt;/blkiotune&gt;</code>
+            </blockquote>Save the file. Also edit <code>Whonix-Workstation-XFCE-15.0.1.7.2.xml</code>. Remove the three lines:
+            <blockquote>
+                <code>&lt;blkiotune&gt;<br>
+                &lt;weight&gt;250&lt;/weight&gt;<br>
+                &lt;/blkiotune&gt;</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <p>In your terminal, issue the commands to create the Gateway and Workstation virtual machines, based on the XML definitions you downloaded:</p>
+            <blockquote>
+                <code>sudo virsh -c qemu:///system define Whonix-Gateway-XFCE-15.0.1.7.2.xml</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo virsh -c qemu:///system define Whonix-Workstation-XFCE-15.0.1.7.2.xml</code>
+            </blockquote>
+            <h3><a id="10-8"></a>10.8. Move Qcow2 Images</h3>
+            <p>Move the virtual machine images into their expected directory:</p>
+            <blockquote>
+                <code>sudo mv Whonix-Gateway-XFCE-15.0.1.7.2.qcow2 /var/lib/libvirt/images/Whonix-Gateway.qcow2</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo mv Whonix-Workstation-XFCE-15.0.1.7.2.qcow2 /var/lib/libvirt/images/Whonix-Workstation.qcow2</code>
+            </blockquote>
+            <h3><a id="10-9"></a>10.9. Obtain Bridge Lines</h3>
+            <p>In a repressive regime, direct connections to the Tor network are often blocked. It will be necessary to use bridges.</p>
+            <p>While you can use the built-in bridges, you will have the widest range of options if you can obtain some custom bridge lines.</p>
+            <p><em>Public</em> custom bridges may be obtained in two ways:</p>
+            <ul>
+                <li>Visit <a href="https://bridges.torproject.org/" target="_blank">https://bridges.torproject.org</a> and follow the instructions.
+                </li>
+                <li>From a Gmail account, email <code>bridges@torproject.org</code>, leaving the email subject empty and writing <code>get transport obfs4</code> in the email
+                message body.</li>
+            </ul>
+            <p>Technically knowledgeable users may also set up <em>private</em> custom Tor bridges. If someone has done this for you, they should give you the bridge line(s).</p>
+            <h2><a id="11"></a>11. Launch Whonix</h2>
+            <h3><a id="11-1"></a>11.1. Start Gateway</h3>
+            <p>Open the <strong>Virtual Machine Manager</strong> graphical user interface.</p><img src="../images/whonix-launch-gateway.png" alt=
+            "Whonix Virtual Machine Manager ready to launch gateway">
+            <p>Select and start the <strong>Whonix-Gateway</strong> virtual machine. <strong>Open</strong> the virtual machine console.</p>
+            <p>The <strong>Whonix Setup Wizard</strong> appears. On part 1/2, read the instuctions, select <strong>Understood / Verstanden</strong>, and click
+            <strong>Next</strong>. On part 2/2, read the instuctions, select <strong>Understood / Verstanden</strong>, and click <strong>Next</strong>. Click
+            <strong>Finish</strong>.</p>
+            <p>Next, the <strong>Anon Connection Wizard</strong> appears. You have three choices:</p>
+            <ul>
+                <li><strong>Connect</strong></li>
+                <li><strong>Configure</strong></li>
+                <li><strong>Disable Tor</strong></li>
+            </ul><img src="../images/whonix-connection-wizard.png" alt="Whonix Anon Connection Wizard">
+            <p>In a country that does not censor the Internet, click <strong>Connect</strong> directly, and bypass the instructions for configuring bridges and a proxy.</p>
+            <p>In a country that censors the Internet, direct connections to Tor may be blocked, and most likely you will need to click <strong>Configure</strong>. On the next
+            screen, affirm that you need bridges. There are three possibilities:</p>
+            <ul>
+                <li>Connect with the provided (public) obfs4 bridges. These are fast and work in most countries.</li>
+                <li>Connect with the provided (public) meek-azure bridges. These are slow but reliable.</li>
+                <li>Enter custom (public or private) bridges. You need to obtain the bridge line(s) in advance (see <a href="#10-9">section 10.9</a> above).
+                </li>
+            </ul>
+            <p>In China, (1) meek-azure, (2) <em>private</em> obfs4 bridges, and (3) a very few custom public obfs4 bridges will work.</p><img src=
+            "../images/whonix-bridges-configuration.png" alt="Whonix bridges configuration">
+            <p>Make your choice for bridges, and click <strong>Next</strong>.</p>
+            <p>Now a screen appears asking if you need to use a proxy before connecting to the Tor network. We will assume that you do not have a proxy at this stage. Click
+            <strong>Next</strong>.</p><img src="../images/whonix-proxy-configuration.png" alt="Whonix local proxy configuration">
+            <p>A summary is displayed. Click <strong>Next</strong>.</p>
+            <p>Tor bootstraps. Especially when using meek-azure bridges, this can take several minutes. When bootstrapping reaches 100%, click
+            <strong>Finish</strong>.</p><img src="../images/whonix-bootstrap-done.png" alt="Whonix Tor bootstrap 100%">
+            <p>Now the Whonix system check runs. This is a bash script that checks system status. It runs in the background and takes approximately three minutes.</p><img src=
+            "../images/whonix-system-check.png" alt="Whonix system check">
+            <p>If your software need to be updated, you will be prompted to do so.</p><img src="../images/whonix-update-needed.png" alt="Whonix update needed">
+            <p>If you were prompted to do an update, then open a terminal from the terminal icon in the menu bar, and enter the command(s) specified.</p><img src=
+            "../images/whonix-upgrade-nonroot.png" alt="Whonix upgrade-nonroot">
+            <p>The update itself happens over Tor, so it may be slow.</p>
+            <p>You may be prompted to reboot the virtual machine at the end of the update process. If so, wait for the updates to be absolutely complete, then reboot as follows.
+            Click the XFCE menu button in the menu bar, then click the green-and-white exit sign, then shut down. Restart from the Virtual Machine Manager.</p>
+            <p>The out-of-the-box username and password are:</p>
+            <ul>
+                <li>Default username: <code>user</code></li>
+                <li>Default password: <code>changeme</code></li>
+            </ul>
+            <p>Change the password to something only you know. In the terminal, issue the command:</p>
+            <blockquote>
+                <code>passwd</code>
+            </blockquote>
+            <p>Enter your current password, then enter and confirm your new password.</p>
+            <p>Minimize the Gateway virtual machine, but leave it running.</p>
+            <p>Setting up your Tor connection is the only work you will do in the Gateway. From now on, you will use the Workstation for everything.</p>
+            <h3><a id="11-2"></a>11.2. Start Workstation</h3>
+            <p>The Workstation is where you will do your actual work. It has no direct connection to the outside world, forcing the Workstation to send its traffic through the Tor
+            Gateway.</p>
+            <p>Select and start the <strong>Whonix-Workstation</strong> virtual machine. <strong>Open</strong> the virtual machine console.</p>
+            <p>The <strong>Whonix Setup Wizard</strong> appears. On part 1/2, read the instuctions, select <strong>Understood / Verstanden</strong>, and click
+            <strong>Next</strong>. On part 2/2, read the instuctions, select <strong>Understood / Verstanden</strong>, and click <strong>Next</strong>. Click
+            <strong>Finish</strong>.</p>
+            <p>Now the Whonix system check runs. This is a bash script that checks the system status. It runs in the background and takes approximately three minutes. If your
+            software need to be updated, you will be prompted to open a terminal from the menu bar and enter the specified command(s). The update itself happens over Tor, so it
+            may be slow.</p>
+            <p>You may be prompted to reboot the virtual machine at the end of the update process. If so, wait for updates to be absolutely complete, then reboot as follows. Click
+            the XFCE menu button in the menu bar, then click the green-and-white exit sign, then shut down. Restart from the Virtual Machine Manager.</p>
+            <p>Here is a screenshot of the Whonix Workstation desktop:</p><img src="../images/install-whonix.png" alt="XCFE menu in Whonix Workstation">
+            <p>The out-of-the-box username and password are:</p>
+            <ul>
+                <li>Default username: <code>user</code></li>
+                <li>Default password: <code>changeme</code></li>
+            </ul>
+            <p>Change the password to something only you know. In the terminal, issue the command:</p>
+            <blockquote>
+                <code>passwd</code>
+            </blockquote>
+            <p>Enter your current password, then enter and confirm your new password.</p>
+            <p>It is often convenient to maximize the Workstation, so that the experience resembles working on an unvirtualized desktop. You can even expand the Workstation into
+            full-screen mode with the button at the top right of the desktop. To get out of full-screen mode, look for the tiny button at the center top of the full-screen
+            desktop.</p>
+            <h3><a id="11-3"></a>11.3. Check Tor</h3>
+            <p>To check your functionality, from the XFCE menu select the <strong>Web Browser</strong>. The Whonix version of Tor Browser appears. Visit <a href="https://check.torproject.org/" target="_blank">https://check.torproject.org</a>. You should see a message: <code>Congratulations. This browser is configured to use
+            Tor.</code></p><img src="../images/whonix-congratulations.png" alt="This browser is configured to use Tor">
+            <h3><a id="11-4"></a>11.4. Disable JavaScript</h3>
+            <p>If you want to maximize your security, then disable JavaScript.</p>
+            <p>There are two ways to disable JavaScript in Tor Browser. The first way is easier to change; the second is safer.</p>
+            <p>For method #1, you click the shield icon to the right of the URL bar, then click <strong>Advanced Security Settings</strong>. Increase the security level to
+            <strong>Safest</strong>. The shield icon turns from an outline into a solid color.</p><img src="../images/whonix-safest.png" alt=
+            "Tor Browser with security level set to safest">
+            <p>For method #2, you navigate to <code>about:config</code>. Confirm that you accept the risk of voiding your warranty. Search for <code>javascript</code>, and set
+            <code>javascript.enabled</code> to <code>false</code>.</p><img src="../images/whonix-javascript-disabled.png" alt="Tor Browser with JavaScript enabled set to false">
+            <p>Some websites will not render properly with JavaScript disabled. You may need to make a judgment call as to whether you trust a site enough to temporarily reenable
+            JavaScript while you visit it.</p>
+            <p>For the pros and cons of enabling JavaScript or using the NoScript add-on to selectively whitelist sites, see the <a href="https://www.whonix.org/wiki/Tor_Browser#Security_vs_Usability_Trade-off" target="blank">Whonix wiki JavaScript discussion</a>.</p>
+            <h3><a id="11-5"></a>11.5. Troubleshooting</h3>
+            <p>If you experience any difficulties operating Whonix, consult the <a href="https://www.whonix.org/wiki/KVM" target="_blank">Whonix KVM page</a> or visit the <a href="https://forums.whonix.org/" target="_blank">Whonix forums</a>.</p>
+            <h2><a id="12"></a>12. Next Step</h2>
+            <p>For additional means to overcome censorship, read <a href="proxy-before-tor-whonix.html">How to Connect to a Proxy Before Tor in Whonix</a>.</p>
+            <p><em>Updated 2021-07-03</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

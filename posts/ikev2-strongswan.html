@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IKEv2 with strongSwan</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>IKEv2 with strongSwan</h1>
+            <p>IKEv2 is defined by the Internet Engineering Task Force standard <a href="https://tools.ietf.org/html/rfc7296" target="_blank">RFC 7296</a>. It uses fixed port
+            numbers. It is therefore easily blocked by censors. Nevertheless, it may work in some countries.</p>
+            <p>This article shows you how to create an IKEv2 server using strongSwan on Debian 10+/Ubuntu.</p>
+            <p>In the examples we give, the client is at IP address <code>xx.xx.xx.xx</code>, and the server is at IP address <code>yy.yy.yy.yy</code>. Wherever you see these
+            values in the examples, you will need to change them to match your actual IP addresses. If you do not know your workstation’s IP address, you can determine it by
+            opening a browser and visiting <a href="https://www.ipchicken.com/" target="_blank">IPchicken.com</a>.</p>
+            <p>We will also give instructions for the example of a Windows client device.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Install and Configure Firewall</h3>
+            <p>We begin by installing a firewall and configuring it to accept packets using AH protocol and ESP protocol, plus 500/udp and 4500/udp, which will be used with
+            clients behind Network Address Translation. We also masquerade outgoing IP addresses.</p>
+            <p>Install and start the firewall by issuing the commands that follow:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>Add the basic firewall rules:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol icmp counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip6 nexthdr icmpv6 counter accept</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better. For example, if your workstation always has IP address <code>xx.xx.xx.xx</code>:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 ip saddr xx.xx.xx.xx/32 counter accept</code>
+            </blockquote>
+            <p>If you cannot predict your workstation IP address, you will have to open port <code>22</code> to the whole world.</p>
+            <p>Open ports <code>500/udp</code> and <code>4500/udp</code> and protocols <code>50</code> and <code>51</code> for IPsec:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol ah counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol esp counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport 500 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport 4500 counter accept</code>
+            </blockquote>
+            <p>Drop all other unsolicited input packets:</p>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Masquerade the outgoing IP address on packets that have come through the VPN:</p>
+            <blockquote>
+                <code>nft add table nat</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat prerouting { type nat hook prerouting priority 0 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat postrouting { type nat hook postrouting priority 100 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule nat postrouting ip saddr 10.0.8.0/24 masquerade</code>
+            </blockquote>
+            <p>Save these firewall rules:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Allow Forwarding</h3>
+            <p>Now enable packet forwarding in the Linux kernel. Create a new configuration file in <code>/etc/sysctl.d</code>:</p>
+            <blockquote>
+                <code>vi /etc/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <p>Insert a single line:</p>
+            <blockquote>
+                <code>net.ipv4.ip_forward=1</code>
+            </blockquote>
+            <p>Save the file. Make this change effective immediately.:</p>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install Packages</h3>
+            <p>Install strongSwan by entering the command:</p>
+            <blockquote>
+                <code>apt install strongswan libstrongswan strongswan-pki libstrongswan-standard-plugins libstrongswan-extra-plugins strongswan-swanctl strongswan-charon
+                strongswan-starter strongswan-libcharon libcharon-extra-plugins charon-systemd -y</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Create Certificate Authority Certificate</h3>
+            <p>We will create a self-signed Certificate Authority (CA) certificate.</p>
+            <p>Issue the command that follows, replacing country <code>US</code>, organization <code>Example</code>, and common name <code>Example CA</code> with your own choices
+            for values:</p>
+            <blockquote>
+                <code>ipsec pki --gen --outform pem &gt; /etc/swanctl/private/ca.pem</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod 600 /etc/swanctl/private/ca.pem</code>
+            </blockquote>
+            <blockquote>
+                <code>ipsec pki --self --ca --lifetime 3650 --in /etc/swanctl/private/ca.pem --dn "C=US, O=Example, CN=Example CA" --outform pem &gt;
+                /etc/swanctl/x509ca/ca.pem</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Create Server Certificate</h3>
+            <p>Generate the server certificate. Issue the next command, replacing <code>Example</code> with your own choice of organization name. Also replace
+            <code>yy.yy.yy.yy</code> wherever it appears by your server’s actual IP address.</p>
+            <blockquote>
+                <code>ipsec pki --gen --outform pem &gt; /etc/swanctl/private/yy.yy.yy.yy.pem</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod 600 /etc/swanctl/private/yy.yy.yy.yy.pem</code>
+            </blockquote>
+            <blockquote>
+                <code>ipsec pki --pub --in /etc/swanctl/private/yy.yy.yy.yy.pem | ipsec pki --issue --lifetime 730 --cacert /etc/swanctl/x509ca/ca.pem --cakey
+                /etc/swanctl/private/ca.pem --dn "C=US, O=Example, CN=yy.yy.yy.yy" --san yy.yy.yy.yy --flag serverAuth --flag ikeIntermediate --outform pem &gt;
+                /etc/swanctl/x509/yy.yy.yy.yy.pem</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Create Client Certificate</h3>
+            <p>Generate the client certificate, similar to the way you generated the server certificate. In the following example, replace <code>win10</code>,
+            <code>example.com</code>, and <code>Example</code> wherever they appear by your own values:</p>
+            <blockquote>
+                <code>ipsec pki --gen --outform pem &gt; /etc/swanctl/private/win10.pem</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod 600 /etc/swanctl/private/win10.pem</code>
+            </blockquote>
+            <blockquote>
+                <code>ipsec pki --pub --in /etc/swanctl/private/win10.pem | ipsec pki --issue --lifetime 730 --cacert /etc/swanctl/x509ca/ca.pem --cakey
+                /etc/swanctl/private/ca.pem --dn "C=US, O=Example, CN=win10.example.com" --san win10.example.com --flag clientAuth --outform pem &gt;
+                /etc/swanctl/x509/win10.pem</code>
+            </blockquote>
+            <h3><a id="1-7"></a>1.7. Configure strongSwan</h3>
+            <p>Create a new file for IKEv2 connections with machine certificate authentication:</p>
+            <blockquote>
+                <code>vi /etc/swanctl/swanctl.conf</code>
+            </blockquote>
+            <p>Insert a configuration like this. Replace <code>yy.yy.yy.yy</code> by your server’s IP address wherever it appears. Also replace any other values as you wish, for
+            example the virtual IP address pool or the DNS servers.</p>
+            <pre>connections {
+  ikev2-pubkey {
+    version = 2
+    proposals = aes192gcm16-aes128gcm16-prfsha256-ecp256-ecp521,aes192-sha256-modp3072,default
+    rekey_time = 0s
+    pools = primary-pool-ipv4,primary-pool-ipv6
+    fragmentation = yes
+    dpd_delay = 30s
+    local {
+      certs = yy.yy.yy.yy.pem
+      id = yy.yy.yy.yy
+    }
+    remote {
+    }
+    children {
+      ikev2-pubkey-child {
+        local_ts = 0.0.0.0/0
+        rekey_time = 0s
+        dpd_action = clear
+        esp_proposals = aes192gcm16-aes128gcm16-prfsha256-ecp256-modp3072,aes192-sha256-ecp256-modp3072,default
+      }
+    }
+  }
+}
+pools {
+  primary-pool-ipv4 {
+    addrs = 10.0.8.0/24
+    dns = 8.8.8.8,8.8.4.4
+  }
+  primary-pool-ipv6 {
+    addrs = fec3::/120
+    dns = 2001:4860:4860::8888,2001:4860:4860::8844
+  }
+}
+secrets {
+  private {
+    file = yy.yy.yy.yy.pem
+  }
+}
+</pre>
+            <p>Save the file.</p>
+            <h3><a id="1-8"></a>1.8. Start strongSwan</h3>
+            <p>Start strongSwan with your new configuration:</p>
+            <blockquote>
+                <code>systemctl restart strongswan-swanctl</code>
+            </blockquote>
+            <h3><a id="1-9"></a>1.9. Check strongSwan</h3>
+            <p>Check that strongSwan is active and running:</p>
+            <blockquote>
+                <code>systemctl status strongswan-swanctl</code>
+            </blockquote>
+            <p>You many need to type <code>q</code> to quit the <code>status</code> display.</p>
+            <p>If there are errors you need to check:</p>
+            <blockquote>
+                <code>journalctl -xe</code>
+            </blockquote>
+            <blockquote>
+                <code>journalctl -u strongswan-swanctl</code>
+            </blockquote>
+            <h3><a id="1-10"></a>1.10. Create Client P12 File</h3>
+            <p>Many types of client prefer a P12 file over separate certificate and key files. A P12 file follows the Public Key Cryptography Standard #12 format, and include keys
+            and certificates in one file.</p>
+            <p>Convert your client certificate and key to PKCS12 format:</p>
+            <blockquote>
+                <code>openssl pkcs12 -export -in /etc/swanctl/x509/win10.pem -inkey /etc/swanctl/private/win10.pem -out ~/win10.p12</code>
+            </blockquote>
+            <p>Make sure you enter and confirm an export password when you are prompted.</p>
+            <p>Also convert your CA certificate to <code>crt</code> format, which is sometimes preferred by client devices:</p>
+            <blockquote>
+                <code>openssl x509 -outform der -in /etc/swanctl/x509ca/ca.pem -out ~/ca.crt</code>
+            </blockquote>
+            <p>Your server work is done for now.</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <p>We will continue on your workstation.</p>
+            <h3><a id="1-11"></a>1.11. Securely Download Certificates to Workstation</h3>
+            <p>The easiest way to securely download certificates to your final device(s) is to first download them to a workstation on your LAN, where they will be behind a
+            firewall. If necessary, you can then transfer them from the workstation to your final clients, if these client devices are different from your workstation. For onward
+            transfer to mobile devices, it may be convenient to create a secure website that presents the certificate to the final client.</p>
+            <p>To download to a Linux workstation, go to your workstation and use the <code>scp</code> command. For example:</p>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:win10.p12 ~/Downloads/win10.p12</code>
+            </blockquote>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:ca.crt ~/Downloads/ca.crt</code>
+            </blockquote>
+            <p>To download to a Windows workstation, you can use the <code>pscp.exe</code> command that comes with <a href="https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html" target="_blank">PuTTY</a>. Here are some samples of the commands. You would enter these into a Windows
+            Command Prompt window (<strong>Win</strong>+<strong>r</strong>, type <code>cmd</code>, then press <strong>Enter</strong>):</p>
+            <blockquote>
+                <code>"C:\Program Files\PuTTY\pscp.exe" -P 22 root@yy.yy.yy.yy:win10.p12 Downloads\win10.p12</code>
+            </blockquote>
+            <blockquote>
+                <code>"C:\Program Files\PuTTY\pscp.exe" -P 22 root@yy.yy.yy.yy:ca.crt Downloads\ca.crt</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Windows Client</h2>
+            <p>Since IPsec and IKEv2 are industry-wide standards, they are supported on many platforms. We give the example of a Windows computer as the client.</p>
+            <h3><a id="2-1"></a>2.1. Import Certificates</h3>
+            <p>Use the Microsoft Management Console to import the CA certificate and the P12 file. Press the <strong>Win</strong>+<strong>r</strong> keys, type <code>mmc</code>,
+            then press <strong>Enter</strong>.</p>
+            <p>Do <strong>File</strong>, <strong>Add/Remove Snap-in</strong>, then choose <strong>Certificates</strong>. You <em>must</em> select <strong>Computer
+            Account</strong>. Select <strong>Local computer</strong>. Click <strong>OK</strong>.</p><img src="../images/ikev2-computer-account.png" alt=
+            "Microsoft Management Console import certificates to computer account">
+            <p>Select <strong>Trusted Root Certification Authorities</strong>. Do <strong>Action</strong> &gt; <strong>All Tasks</strong> &gt; <strong>Import</strong>. Import your
+            downloaded <code>ca.crt</code> file.</p><img src="../images/ikev2-import-ca.png" alt="Microsoft Management Console import CA certificate">
+            <p>Select <strong>Personal</strong>. Do <strong>Action</strong> &gt; <strong>All Tasks</strong> &gt; <strong>Import</strong>. Import your downloaded
+            <code>win10.p12</code> file. You will need to enter the password for the P12 file when you import it.</p>
+            <p>The client certificate appears under <strong>Personal</strong>.</p><img src="../images/ikev2-imported-p12.png" alt=
+            "Microsoft Management Console after importing P12 file">
+            <p>Close the Microsoft Management Console. There is no need to save the console settings.</p>
+            <h3><a id="2-2"></a>2.2. Add VPN Connection</h3>
+            <p>Add the new VPN connection in <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt; <strong>VPN</strong>. The VPN provider is <strong>Windows
+            (built-in)</strong>. The Connection name is (for example) <code>win10</code>. The Server name or address in our example is <code>yy.yy.yy.yy</code>. The VPN type is
+            <strong>IKEv2</strong>. The Type of sign-in info is <strong>Certificate</strong>.</p><img src="../images/ikev2-add-vpn-connection.png" alt=
+            "Adding an IKEv2 VPN connection on Windows 10">
+            <h3><a id="2-3"></a>2.3. Set Authentication Method to Machine Certificate</h3>
+            <p>Once you have added the new connection, check that the authentication method is set to machine certificate. For example, if you named the connection
+            <code>win10</code>, then open Windows PowerShell (right-click on Start menu) and issue the command:</p>
+            <blockquote>
+                <code>Get-VpnConnection -Name "win10"</code>
+            </blockquote>
+            <p>If necessary, set the authentication method to machine certificate:</p>
+            <blockquote>
+                <code>Set-VpnConnection -Name "win10" -AuthenticationMethod "MachineCertificate"</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4. Enable MODP2048 in Registry</h3>
+            <p>Now edit the registry to allow use of <code>modp2048</code>.</p>
+            <p>Press the <strong>Win</strong>+<strong>r</strong> keys, type <code>regedit</code>, then press <strong>Enter</strong>. Navigate to <code>HKEY_LOCAL_MACHINE</code>
+            &gt; <code>SYSTEM</code> &gt; <code>CurrentControlSet</code> &gt; <code>Services</code> &gt; <code>Rasman</code> &gt; <code>Parameters</code>.</p>
+            <p>Insert a new DWORD (32-bit value). The name is <code>NegotiateDH2048_AES256</code>. The value is <code>1</code>, which means enable AES-256-CBC and
+            MODP-2048.</p><img src="../images/ikev2-regedit.png" alt="Editing the registry on Windows 10">
+            <h3><a id="2-5"></a>2.5. Route Traffic through VPN</h3>
+            <p>Route all traffic through your VPN connection as follows.</p>
+            <p>Open the <strong>Control Panel</strong> &gt; <strong>Network and Internet</strong> &gt; <strong>Network and Sharing Center</strong>. Click <strong>Change adapter
+            settings</strong>.</p>
+            <p>Select your IKEv2 interface (WAN Miniport named <code>win10</code> in our example). Right-click, and select <strong>Properties</strong>. Go to the
+            <strong>Networking</strong> tab. Select the row for <strong>Internet Protocol Version 4 (TCP/IPv4)</strong>. Click <strong>Properties</strong>. Click
+            <strong>Advanced</strong>. Check the box for <strong>Use default gateway on remote network</strong>.</p><img src="../images/ikev2-network-gateway.png" alt=
+            "Use default gateway on remote network on Windows 10">
+            <p>Close the <strong>Control Panel</strong> windows.</p>
+            <h3><a id="2-6"></a>2.6. Connect</h3>
+            <p>Now you can connect your client to your server from <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt; <strong>VPN</strong>. Select your VPN
+            and press <strong>Connect</strong>.</p><img src="../images/ikev2-connect.png" alt="IKEv2 ready to connect on Windows 10">
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>For your client device in general, seek support through the normal channels for that device.</p>
+            <p>For strongSwan, support arrangements are listed on the <a href="https://www.strongswan.org/support.html" target="_blank">strongSwan support page</a>.</p>
+            <p>If you would like instructions for a hardened strongSwan installation, or for iOS and macOS clients, see the blog post by <a href="https://sunknudsen.com/privacy-guides/how-to-self-host-hardened-strongswan-ikev2-ipsec-vpn-server-for-ios-and-macos" target="_blank">Sun Knudsen</a>.</p>
+            <p><em>Updated 2021-06-17</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

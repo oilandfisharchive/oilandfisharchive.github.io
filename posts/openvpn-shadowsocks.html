@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenVPN + Shadowsocks</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>OpenVPN + Shadowsocks</h1>
+            <p>It can be advantageous to combine OpenVPN with Shadowsocks. OpenVPN gives perfect forward secrecy, something that Shadowsocks cannot offer, since it uses a
+            preshared key. At the same time, Shadowsocks has superior ability to evade censorship.</p>
+            <p>Both server and client in this article run recent versions of Debian or Ubuntu.</p>
+            <h2><a id="1"></a>1. Set Up Server</h2>
+            <h3><a id="1-1"></a>1.1. Choose Port for Shadowsocks</h3>
+            <p>On your server, choose a random port number between 10,000 and 50,000 for Shadowsocks.</p>
+            <blockquote>
+                <code>awk -v min=10000 -v max=50000 'BEGIN{srand(); print int(min+rand()*(max-min+1))}'</code>
+            </blockquote>
+            <p>The example result that we will use in the rest of this article:</p>
+            <blockquote>
+                <code>16273</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Open Firewall</h3>
+            <p>There are multiple ways to implement a firewall: nftables, iptables, ufw, and firewalld. The modern way is nftables. However, in a moment we are going to install
+            OpenVPN with a script that uses iptables. Therefore we will use iptables to build our basic firewall. Issue each of these commands in turn:</p>
+            <blockquote>
+                <code>iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better.</p>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 22 -j ACCEPT</code>
+            </blockquote>
+            <p>Add rules to open the random port you chose for Shadowsocks:</p>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 16273 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p udp --dport 16273 -j ACCEPT</code>
+            </blockquote>
+            <p>Drop all unexpected input:</p>
+            <blockquote>
+                <code>iptables -P INPUT DROP</code>
+            </blockquote>
+            <p>Save the iptables rules so that they persist after reboots:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install iptables-persistent -y</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Implement BBR</h3>
+            <p>Bottleneck Bandwidth and Round-trip propagation time (BBR) is a TCP congestion control algorithm developed at Google. Under certain types of network congestion, it
+            will improve your latency. Implement BBR TCP congestion control on your server with the following commands:</p>
+            <blockquote>
+                <code>cat &gt;&gt; /etc/sysctl.d/50-bbr.conf &lt;&lt;EOF<br>
+                net.core.default_qdisc=fq<br>
+                net.ipv4.tcp_congestion_control=bbr<br>
+                EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/50-bbr.conf</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Download Angristan OpenVPN Install Script</h3>
+            <p>Get the Angristan OpenVPN script from GitHub:</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh</code>
+            </blockquote>
+            <p>Make the script executable:</p>
+            <blockquote>
+                <code>chmod +x openvpn-install.sh</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Run Script and Create Client OVPN File</h3>
+            <p>Run the Angristan OpenVPN script:</p>
+            <blockquote>
+                <code>./openvpn-install.sh</code>
+            </blockquote>
+            <p>You can accept the suggested default answers to most of the questions, but Shadowsocks will require OpenVPN to use <code>TCP</code> rather than
+            <code>UDP</code>:</p>
+            <ol>
+                <li>IP address should accurately reflect the IP address of your server</li>
+                <li>Port choice should be <code>1194</code> (it will be hidden behind Shadowsocks anyway)</li>
+                <li>Protocol <code>UDP</code> is fastest and should work with Shadowsocks, but some countries throttle or block <code>UDP</code>, so choose <code>TCP</code> if you
+                need to</li>
+                <li>For DNS servers, you can choose your favorite, e.g. Cloudflare or Google</li>
+                <li>For enable compression, recommend <code>n</code> for no</li>
+                <li>For customized encryption settings, recommend <code>n</code> for no</li>
+            </ol>
+            <p>After answering all the questions, press any key to continue and run the script. At the end of the installation, you are asked about the first client:</p>
+            <ol>
+                <li>For the first client name, we will put <code>debian10</code></li>
+                <li>For the private key file, we will put passwordless</li>
+            </ol>
+            <p>You can check that OpenVPN is <code>active (running)</code> after the script finishes:</p>
+            <blockquote>
+                <code>systemctl status openvpn@server</code>
+            </blockquote>
+            <p>Check also that OpenVPN is listening for <code>UDP</code> or <code>TCP</code> input on port <code>1194</code>:</p>
+            <blockquote>
+                <code>ss -tulpn | grep 1194</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Adjust Firewall Rules</h3>
+            <p>If you look at the iptables firewall, you will see that the script has opened port <code>1194</code> to the public:</p>
+            <blockquote>
+                <code>iptables -vnL</code>
+            </blockquote>
+            <p>We want to make the OpenVPN server as invisible as possible. Therefore we will close port <code>1194</code> to the public. In a few minutes, we’ll add Shadowsocks
+            to handle incoming traffic and pass it to OpenVPN, on the loopback interface port <code>1194</code>.</p>
+            <p>Edit the iptables rules that get added when OpenVPN is brought up:</p>
+            <blockquote>
+                <code>vi /etc/iptables/add-openvpn-rules.sh</code>
+            </blockquote>
+            <p>Delete the line to insert an input rule accepting packets on port <code>1194</code>. Save the file.</p>
+            <p>Edit the iptables rules that get removed when OpenVPN is brought down:</p>
+            <blockquote>
+                <code>vi /etc/iptables/rm-openvpn-rules.sh</code>
+            </blockquote>
+            <p>Delete the line deleting the input rule accepting packets on port <code>1194</code>. Save the file.</p>
+            <p>Make sure that everything still works after you reboot the server:</p>
+            <blockquote>
+                <code>reboot</code>
+            </blockquote>
+            <p>Check the revised iptables rules:</p>
+            <blockquote>
+                <code>iptables -vnL</code>
+            </blockquote>
+            <p>You should see that port <code>1194</code> is no longer open to the public. Traffic that is passed from Shadowsocks to OpenVPN will still be accepted, since it uses
+            the loopback interface (<code>-i lo</code>), for which we added a special iptables rule at the beginning.</p>
+            <h3><a id="1-7"></a>1.7. Install Shadowsocks</h3>
+            <p>Install Shadowsocks-Libev from the repositories:</p>
+            <blockquote>
+                <code>apt install shadowsocks-libev -y</code>
+            </blockquote>
+            <h3><a id="1-8"></a>1.8. Configure Shadowsocks</h3>
+            <p>Generate a strong password:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>The example result that we will use in the rest of this article:</p>
+            <blockquote>
+                <code>r7EaFR2DshpQT+QMfQGYO5BXC2BAV8JG</code>
+            </blockquote>
+            <p>Edit the Shadowsocks-Libev configuration file:</p>
+            <blockquote>
+                <code>vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Enter your choice of configuration details. Using our example of a random port and password:</p>
+            <blockquote>
+                <code>{<br>
+                "server":["::1", "0.0.0.0"],<br>
+                "mode":"tcp_and_udp",<br>
+                "server_port":16273,<br>
+                "local_port":1080,<br>
+                "password":"r7EaFR2DshpQT+QMfQGYO5BXC2BAV8JG",<br>
+                "timeout":300,<br>
+                "method":"chacha20-ietf-poly1305"<br>
+                }</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="1-9"></a>1.9. Restart Shadowsocks</h3>
+            <p>Restart Shadowsocks-Libev, check that it is working, then exit your session with the server:</p>
+            <blockquote>
+                <code>systemctl restart shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl status shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>ss -tulpn | grep ss-server</code>
+            </blockquote>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Set Up Client</h2>
+            <h3><a id="2-1"></a>2.1. Copy Client Configuratio File from Server to PC</h3>
+            <p>Now work on your PC. Assuming that your server has IP address <code>yy.yy.yy.yy</code> and that you named the client file <code>debian10.ovpn</code>, copy the OVPN
+            file down from the server to the client like this:</p>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:debian10.ovpn ~/Downloads/debian10.conf</code>
+            </blockquote>
+            <h3><a id="2-2"></a>2.2. Install Shadowsocks Client</h3>
+            <p>Install Shadowsocks-Libev from the repositories:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install shadowsocks-libev -y</code>
+            </blockquote>
+            <h3><a id="2-3"></a>2.3. Configure Shadowsocks Client</h3>
+            <blockquote>
+                <code>sudo systemctl stop shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl disable shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Enter your server details, replacing <code>yy.yy.yy.yy</code> by your server’s public IP address. The port, password, and encryption method must match those on the
+            server.</p>
+            <blockquote>
+                <code>{<br>
+                "server": "yy.yy.yy.yy",<br>
+                "server_port": 16273,<br>
+                "local_address": "127.0.0.1",<br>
+                "local_port":1080,<br>
+                "password": "r7EaFR2DshpQT+QMfQGYO5BXC2BAV8JG",<br>
+                "method": "chacha20-ietf-poly1305",<br>
+                "timeout": 300,<br>
+                "fast_open": false,<br>
+                "mode": "tcp_and_udp"<br>
+                }</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="2-4"></a>2.4. Start Shadowsocks</h3>
+            <p>Start the local client listening on port <code>1080</code>:</p>
+            <blockquote>
+                <code>sudo systemctl enable shadowsocks-libev-local@config</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl start shadowsocks-libev-local@config</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ss -tulpn | grep 1080</code>
+            </blockquote>
+            <h3><a id="2-5"></a>2.5. Install OpenVPN Client</h3>
+            <p>Install OpenVPN for GNOME and all its dependencies from the repositories:</p>
+            <blockquote>
+                <code>sudo apt install network-manager-openvpn-gnome -y</code>
+            </blockquote>
+            <h3><a id="2-6"></a>2.6. Configure OpenVPN Client</h3>
+            <p>Edit the downloaded OpenVPN client configuration file:</p>
+            <blockquote>
+                <code>vi ~/Downloads/debian10.conf</code>
+            </blockquote>
+            <p>Add a line at the end:</p>
+            <blockquote>
+                <code>socks-proxy 127.0.0.1 1080</code>
+            </blockquote>
+            <p>Save the file. You can now also close your terminal.</p>
+            <p>From GNOME Settings, go to the <strong>Network</strong> page.</p>
+            <ol>
+                <li>Click the plus sign to add a VPN</li>
+                <li>Select the option <strong>Import from file...</strong></li>
+                <li>Select your downloaded <code>~/Downloads/debian10.conf</code> file</li>
+                <li>Click <strong>Add</strong></li>
+            </ol>
+            <h3><a id="2-7"></a>2.7. Add Static Route to Server</h3>
+            <p>With OpenVPN and Shadowsocks running at the same time, we must prevent a routing loop. We do not want traffic for the OpenVPN server to go to the OpenVPN client,
+            then to the Shadowsocks client, and then back to the OpenVPN client again.</p>
+            <p>On Windows, you can add <code>route yy.yy.yy.yy 255.255.255.255 net_gateway</code> to the OpenVPN client configuration. This does not work on a Linux client running
+            Network Manager due to <a href="https://bugzilla.redhat.com/show_bug.cgi?id=1417169" target="_blank">#1417169</a>. Network Manager for OpenVPN does not support special
+            <code>route</code> keywords such as <code>vpn_gateway</code> or <code>net_gateway</code>.</p>
+            <p>Therefore on a Linux client, we will add a static route at this stage.</p>
+            <p>Determine your default gateway:</p>
+            <blockquote>
+                <code>ip route | grep default</code>
+            </blockquote>
+            <p>Let’s say, for example, that your OpenVPN server is <code>yy.yy.yy.yy</code>, your default gateway is <code>192.168.1.254</code>, and your real interface is
+            <code>enp0s3</code>. Add a temporary static route:</p>
+            <blockquote>
+                <code>sudo ip route add yy.yy.yy.yy via 192.168.1.254 dev enp0s3</code>
+            </blockquote>
+            <p>The route will persist until the next reboot (or until you explicitly delete the route).</p>
+            <h3><a id="2-8"></a>2.8. Test End-to-End</h3>
+            <p>In GNOME Network Settings, toggle your newly added VPN connection to the ON position.</p>
+            <p>Open Firefox, and visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p>
+            <p>You should see the IP address of your remote server, not your local client.</p>
+            <h2><a id="5"></a>3. Get Help and Report Issues</h2>
+            <ul>
+                <li>For OpenVPN questions, post in the <a href="https://forums.openvpn.net/" target="_blank">OpenVPN forum</a>
+                </li>
+                <li>For Shadowsocks-Libev issues, see <a href="https://github.com/shadowsocks/shadowsocks-libev/issues" target="_blank">GitHub</a>
+                </li>
+            </ul>
+            <p><em>Updated 2020-09</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

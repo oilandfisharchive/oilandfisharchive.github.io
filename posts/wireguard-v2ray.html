@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WireGuard + V2Ray</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>WireGuard + V2Ray</h1>
+            <p>This is an English-language expansion of the instructions on the Chinese-language blog <a href="https://cupkappu.github.io/2020/09/27/Wireguard-over-V2ray" target="_blank">https://cupkappu.github.io/2020/09/27/Wireguard-over-V2ray</a>. In the examples that follow:</p>
+            <ul>
+                <li>The Debian 11 server is assumed to be at IP address <code>168.168.168.168</code></li>
+                <li>To keep the article simple, the V2Ray server on port <code>16823</code> does not use any obfuscation</li>
+                <li>WireGuard uses port <code>51820</code></li>
+                <li>The client runs Windows 11</li>
+            </ul>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Open Firewall on Debian 11 Server</h3>
+            <p>SSH into your server as root. Open the firewall:</p>
+            <ol>
+                <li>Open firewall for input <code>UDP</code> on destination port <code>16823</code></li>
+                <li>Open firewall for input <code>TCP</code> on destination port <code>16823</code></li>
+                <li>Persist firewall rules across reboots</li>
+            </ol>
+            <h3><a id="1-2"></a>1.2. Install V2Ray on Debian 11 Server</h3>
+            <p>Install V2Ray using the standard script:</p>
+            <blockquote>
+                <code>curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh | bash</code>
+            </blockquote>
+            <p>Edit the configuration file <code>/usr/local/etc/v2ray/config.json</code>. Make it look like as below. Change the universally unique id (UUID) and the port number
+            as you prefer. If you need to, you can get a generated UUID from <a href="https://www.uuidgenerator.net/" target="_blank">https://www.uuidgenerator.net</a>.</p>
+            <pre>{
+  "inbounds": [
+    {
+      "port": 16823,
+      "protocol": "vmess", 
+      "settings": {
+        "clients": [
+          {
+            "id": "fc4e5bb2-cbbc-44af-8edb-77360d068c1c", 
+            "alterId": 64
+          }
+        ]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ]
+}
+</pre>
+            <p>Enable and start V2Ray:</p>
+            <blockquote>
+                <code>systemctl enable v2ray</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start v2ray</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install WireGuard on Debian 11 Server</h3>
+            <p>Install WireGuard using the <code>angristan</code> script:</p>
+            <blockquote>
+                <code>curl -O https://raw.githubusercontent.com/angristan/wireguard-install/master/wireguard-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x wireguard-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./wireguard-install.sh</code>
+            </blockquote>
+            <p>Answer the questions that the script prompts you for. You can accept the defaults or enter your own values. In the example that follows, all the values were
+            defaults except for the port number of <code>51820</code>.</p>
+            <ul>
+                <li><code>IPv4 or IPv6 public address: 168.168.168.168</code></li>
+                <li><code>Public interface: eth0</code></li>
+                <li><code>WireGuard interface name: wg0</code></li>
+                <li><code>Server's WireGuard IPv4: 10.66.66.1</code></li>
+                <li><code>Server's WireGuard IPv6: fd42:42:42::1</code></li>
+                <li><code>Server's WireGuard port [1-65535]: 51820</code></li>
+                <li><code>First DNS resolver to use for the clients: 94.140.14.14</code></li>
+                <li><code>Second DNS resolver to use for the clients (optional): 94.140.15.15</code></li>
+            </ul>
+            <p>At the end of the script, enter your choices for the first WireGuard client:</p>
+            <ul>
+                <li><code>Client name: pc</code></li>
+                <li><code>Client's WireGuard IPv4: 10.66.66.2</code></li>
+                <li><code>Client's WireGuard IPv6: fd42:42:42::2</code></li>
+            </ul>
+            <p>The script creates a server configuration file <code>/etc/wireguard/wg0.conf</code> that looks like this:</p>
+            <blockquote>
+                <code>[Interface]<br>
+                Address = 10.66.66.1/24,fd42:42:42::1/64<br>
+                ListenPort = 51820<br>
+                PrivateKey = wGZ+rBUlp1lh54E9+xfMyBNtQGgRff0YIxv43JGfN2A=<br>
+                PostUp = iptables -A FORWARD -i eth0 -o wg0 -j ACCEPT; iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; ip6tables -A
+                FORWARD -i wg0 -j ACCEPT; ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE<br>
+                PostDown = iptables -D FORWARD -i eth0 -o wg0 -j ACCEPT; iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; ip6tables -D
+                FORWARD -i wg0 -j ACCEPT; ip6tables -t nat -D POSTROUTING -o eth0 -j MASQUERADE<br>
+                <br>
+                [Peer]<br>
+                PublicKey = 61D/sa8ZDysnWcEaUrXcv5e5yB+wln0bQh6ULky9gA8=<br>
+                PresharedKey = eefSFlG2d/M2ajG9ooStEuPME+eFBpsZDAoUQ6UcU8U=<br>
+                AllowedIPs = 10.66.66.2/32,fd42:42:42::2/128</code>
+            </blockquote>
+            <p>The script also creates a first client configuration file <code>/root/wg0-client-pc.conf</code> that looks like this:</p>
+            <blockquote>
+                <code>[Interface]<br>
+                PrivateKey = ULB+BKBTV39MVHfMApK59d+ip+FMQsPr8K9As5B0x0k=<br>
+                Address = 10.66.66.2/32,fd42:42:42::2/128<br>
+                DNS = 94.140.14.14,94.140.15.15<br>
+                <br>
+                [Peer]<br>
+                PublicKey = tWaWaa1NjhsYPIX+GeI2U+x8CiNy+v3vQMgrK936LhQ=<br>
+                PresharedKey = eefSFlG2d/M2ajG9ooStEuPME+eFBpsZDAoUQ6UcU8U=<br>
+                Endpoint = 168.168.168.168:51820<br>
+                AllowedIPs = 0.0.0.0/0,::/0</code>
+            </blockquote>
+            <p>You can check that the script has set the systemd service running with the command:</p>
+            <blockquote>
+                <code>systemctl status wg-quick@wg0</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Client</h2>
+            <h3><a id="2-1"></a>2.1. Install V2Ray on Windows 11 Client</h3>
+            <p>Download the latest V2Ray client for Windows. For example, if the latest relese is version <code>5.0.6</code>, it will be at <a href="https://github.com/v2fly/v2ray-core/releases/download/v5.0.6/v2ray-windows-64.zip" target="_blank">https://github.com/v2fly/v2ray-core/releases/download/v5.0.6/v2ray-windows-64.zip</a>.</p>
+            <p>Unzip <code>v2ray-windows-64.zip</code>.</p>
+            <p>Open Windows Notepad and edit <code>Downloads\v2ray-windows-64\config.json</code>.</p>
+            <p>Substitute into what follows your actual server address, port, and UUID. They should match the values on the server. Note that <code>alterId</code> needs to be
+            <code>0</code> on the client for some reason.</p>
+            <pre>{
+  "inbounds": [
+    {
+      "tag":"wireguard",
+      "port":51820,
+      "protocol":"dokodemo-door",
+        "settings":{  
+          "address":"127.0.0.1",
+          "port":51820,
+          "network":"udp"
+        }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag":"proxy",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "168.168.168.168", 
+            "port": 16823,
+            "users": [
+              {
+                "id": "fc4e5bb2-cbbc-44af-8edb-77360d068c1c",
+                "alterId": 0
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "routing":{  
+    "rules":[  
+      {  
+        "type":"field",
+        "inboundTag":[  
+          "wireguard"
+        ],
+        "outboundTag":"proxy"
+      }
+    ]
+  }
+}
+</pre>
+            <p>Save the edited <code>config.json</code> file.</p>
+            <h3><a id="2-2"></a>2.2. Install WireGuard on Windows 11 Client</h3>
+            <p>Download the WireGuard for Windows installer from <a href="https://www.wireguard.com/install" target="_blank">https://www.wireguard.com/install</a>.</p>
+            <p>Run <code>Downloads\wireguard-installer.exe</code>.</p>
+            <p>Click <strong>Yes</strong> to allow changes.</p>
+            <p>Click <strong>Add Tunnel</strong> &gt; <strong>Add empty tunnel</strong>.</p>
+            <p>Set the tunnel name equal to <code>Debian-11</code> or whatever you choose to name this server. No spaces are allowed.</p>
+            <p>Paste in the configuration below. Note that the endpoint has been changed to be localhost (<code>127.0.0.1</code>), not the remote server!</p>
+            <blockquote>
+                <code>[Interface]<br>
+                PrivateKey = ULB+BKBTV39MVHfMApK59d+ip+FMQsPr8K9As5B0x0k=<br>
+                Address = 10.66.66.2/32,fd42:42:42::2/128<br>
+                DNS = 94.140.14.14,94.140.15.15<br>
+                <br>
+                [Peer]<br>
+                PublicKey = tWaWaa1NjhsYPIX+GeI2U+x8CiNy+v3vQMgrK936LhQ=<br>
+                PresharedKey = eefSFlG2d/M2ajG9ooStEuPME+eFBpsZDAoUQ6UcU8U=<br>
+                Endpoint = 127.0.0.1:51820<br>
+                AllowedIPs = 0.0.0.0/0,::/0</code>
+            </blockquote>
+            <p>Uncheck the box for a kill switch.</p>
+            <p>Click <strong>Save</strong>.</p>
+            <h3><a id="2-3"></a>2.3. Add Route to Server</h3>
+            <p>Open a Windows command prompt with <strong>Run as administrator</strong>. Click <strong>Yes</strong> to allow. Add a route to your server via your main interface’s
+            gateway. For example, if your server is at <code>168.168.168.168</code> and your primary gateway is at <code>192.168.122.1</code>:</p>
+            <blockquote>
+                <code>route ADD 168.168.168.168 MASK 255.255.255.255 192.168.122.1</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4. Run V2Ray and WireGuard Windows 11 Clients</h3>
+            <p>Open a new Windows command prompt. You do not need to run this one as administrator.</p>
+            <p>Change into the unzipped directory for V2Ray for Windows:</p>
+            <blockquote>
+                <code>cd Downloads\v2ray-windows-64</code>
+            </blockquote>
+            <p>Set the client running:</p>
+            <blockquote>
+                <code>v2ray run</code>
+            </blockquote>
+            <p>Leave the command prompt window open with V2Ray running in it. Expect to see messages <code>Using default config</code> and <code>V2Ray 5.0.6 started</code>.</p>
+            <p>In the WireGuard graphical user interface, select your tunnel and click <strong>Activate</strong>.</p>
+            <p>You can test your connection by visiting <a href="https://whatismyipaddress.com/" target="_blank">https://whatismyipaddress.com</a>.</p>
+            <h3><a id="2-5"></a>2.5. Disconnect</h3>
+            <p>Deactivate the WireGuard tunnel in the GUI.</p>
+            <p>Stop V2Ray in the Windows command prompt window by pressing <strong>Ctrl</strong>+<strong>c</strong> on your computer keyboard. Close the command prompt window.</p>
+            <p>Delete the route you added to your server.</p>
+            <p><em>Updated 2022-06-06</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

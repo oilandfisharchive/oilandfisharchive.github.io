@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenVPN on NAT IPv4 OpenVZ VPS</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>OpenVPN on NAT IPv4 OpenVZ VPS</h1>
+            <p>Giving a virtual private server (VPS) only a Network Address Translation (NAT) IPv4 address makes the server astonishingly affordable.</p>
+            <p>There’s only a fixed number of IPv4 addresses. All 4.3 billion IPv4 addresses have now been exhausted, and their cost has risen to the point where an IPv4 address
+            can be a major part of the cost of a low-end server.</p>
+            <p>Virtualizing with OpenVZ or LXC gives further cost savings. The Linux kernel is shared between many virtual machines, so each machine needs less memory of its own.
+            You can create a useful server with as little as 128 MB of RAM.</p>
+            <p>By sharing a single IPv4 address and reducing the RAM, providers can offer you a server for as little as $4/year. The NAT IPv4 providers I’ve heard of are <a href="https://mrvm.net/" target="_blank">MrVM</a>, <a href="https://inceptionhosting.com/" target="_blank">Inception Hosting</a>, <a href="https://hosting.gullo.me/" target="_blank">Gullo’s Hosting</a>, and <a href="https://webhorizon.in/" target="_blank">WebHorizon</a>. There may be others.</p>
+            <p>This tutorial shows you how to install OpenVPN on a NAT IPv4 OpenVZ VPS, using the Nyr OpenVPN installer script. The procedure for the Angristan OpenVPN installer
+            script is similar.</p>
+            <p>OpenVPN has pros and cons. The pros are that it has been field-tested for many years, its security has been externally audited, and clients exist for all the common
+            platforms. The main con is that it is blocked in several countries.</p>
+            <p>If you are going to follow along with this tutorial, you should also check that your VPS provider’s IP address(es) are reachable from your country. NAT IPv4 servers
+            are very popular, and at least one country has blocked the IP addresses of at least one provider.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Enable TUN/TAP</h3>
+            <p>TUN and TAP are interfaces that exist only in software.</p>
+            <ul>
+                <li>A TUN (short for TUNnel) interface operates at level 3 of the <a href="https://en.wikipedia.org/wiki/OSI_model" target="_blank">Open Systems Interconnection (OSI) model</a>, the packet routing level.
+                </li>
+                <li>A TAP (short for Test Access Point) interface operates lower down, at level 2 of the OSI model. You must use TAP if you want to build a network bridge.</li>
+            </ul>
+            <p>In this tutorial we will use a TUN interface.</p>
+            <p>While OpenVZ does support VPN inside a container, you must explicitly enable TUN/TAP for the container. Most providers allow you to do this from their control
+            panel. The appearance of the control panel will vary from provider to provider. On MrVM, it looks as shown below. Scroll down to the <strong>VPS Management</strong>
+            section, and click <strong>VPS Configuration</strong>.</p><img src="../images/openvz-1.png" alt="VPS Configuration in OpenVZ">
+            <p>In the <strong>VPS Configuration</strong> box, check <strong>Enable Tun/Tap</strong>.</p><img src="../images/openvz-2.png" alt="Enable TUN/TAP in OpenVZ">
+            <p>Click <strong>Submit</strong>. Wait while TUN/TAP is enabled.</p>
+            <h3><a id="1-2"></a>1.2. Install Legacy Iptables</h3>
+            <p>There is a special consideration if you are running Debian 10. The distribution is transitioning between iptables and nftables. Although it looks like you’re
+            getting iptables, it’s actually nftables under the hood. To set it back to pure iptables, SSH into the server, and switch to the legacy version of iptables:</p>
+            <blockquote>
+                <code>apt install iptables</code>
+            </blockquote>
+            <blockquote>
+                <code>update-alternatives --set iptables /usr/sbin/iptables-legacy</code>
+            </blockquote>
+            <blockquote>
+                <code>update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Reboot</h3>
+            <p>After enabling TUN/TAP and installing legacy iptables, you should reboot:</p>
+            <blockquote>
+                <code>reboot</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Check Kernel</h3>
+            <p>We’ll do some final checks before installing OpenVPN. Check that the kernel module tun is loaded:</p>
+            <blockquote>
+                <code>lsmod | grep tun</code>
+            </blockquote>
+            <p>It should show that the module tun is loaded. Finally, issue the command:</p>
+            <blockquote>
+                <code>cat /dev/net/tun</code>
+            </blockquote>
+            <p>You should see a message, <code>File descriptor in bad state</code>. That sounds like an error, but it is in fact what you need. If you see a message, <code>No such
+            device</code>, then TUN/TAP has not been enabled on your VPS.</p>
+            <h3><a id="1-5"></a>1.5. Download Script</h3>
+            <p>Download the Nyr OpenVPN installer script from <a href="https://github.com/Nyr/openvpn-install" target="_blank">GitHub</a>:</p>
+            <blockquote>
+                <code>wget --no-check-certificate https://git.io/vpn -O openvpn-install.sh</code>
+            </blockquote>
+            <p>Before you run the script:</p>
+            <ol>
+                <li>Make a note of the public IP address of your server.</li>
+                <li>A NAT IPv4 VPS typically includes only 20 ports for your use, plus one extra for SSH. Choose one of the ports allocated to your NAT IPv4 VPS that you will use
+                for OpenVPN.</li>
+            </ol>
+            <h3><a id="1-6"></a>1.6. Run Script</h3>
+            <p>Run the script with bash:</p>
+            <blockquote>
+                <code>bash openvpn-install.sh</code>
+            </blockquote>
+            <p>The exact questions the installer asks will vary, depending on the networking configuration of your VPS. The questions might cover:</p>
+            <ul>
+                <li>What is the public IPv4 address or hostname of the server</li>
+                <li>Which IPv6 address should be used</li>
+                <li>Which protocol should OpenVPN use (UDP or TCP)</li>
+                <li>What port should OpenVPN listen on (which will have to be one of the ports allocated to your VPS)</li>
+                <li>Which DNS server should be pushed to the clients (current system resolvers, Google, 1.1.1.1, OpenDNS, Quad9 or AdGuard)</li>
+            </ul>
+            <p>You are also asked to enter a name for the first client. We will use as an example the name <code>westcoast</code>.</p>
+            <p>At the end of the script’s run, you will have a client configuration file named <code>westcoast.ovpn</code> (in our example). Rerun the script if you have more than
+            one client.</p>
+            <h2><a id="2"></a>2. Clients</h2>
+            <h3><a id="2-1"></a>2.1. Download Client Configuration Files to Local PC</h3>
+            <p>You need to get the configuration file on to your OpenVPN client.</p>
+            <p>The easiest way to securely download file(s) to your device(s) is to first download them to a PC on your LAN, where they will be behind a firewall. If the PC itself
+            is not the client, you can then copy them from the PC to your final client(s).</p>
+            <p>To download to a Linux PC, go to your PC and use the <code>scp</code> command. For example, if your server public IP address is <code>yy.yy.yy.yy</code>, your
+            server SSH port is <code>321</code>, and your client file is named <code>westcoast.ovpn</code>:</p>
+            <blockquote>
+                <code>scp -P 321 root@yy.yy.yy.yy:westcoast.ovpn ~/Downloads/westcoast.ovpn</code>
+            </blockquote>
+            <p>To download to a Windows PC, you can use the <code>pscp.exe</code> command that comes with <a href="https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html" target="_blank">PuTTY</a>. Here is a sample command that you would enter into a Windows Command Prompt. In this example, the server public IP address is
+            <code>yy.yy.yy.yy</code>, your server SSH port is <code>321</code>, and your client file is named <code>westcoast.ovpn</code>.</p>
+            <blockquote>
+                <code>"C:\Program Files\PuTTY\pscp.exe" -P 321 root@yy.yy.yy.yy:westcoast.ovpn Downloads\westcoast.ovpn</code>
+            </blockquote>
+            <p>If the PC is also your client for OpenVPN, you would use the downloaded OpenVPN configuration file directly. If a mobile device is your client, you would securely
+            transfer the OVPN file from your PC to your mobile device.</p>
+            <h3><a id="2-2"></a>2.2. Linux Client</h3>
+            <p>Assuming you are using GNOME desktop, install the OpenVPN client as follows. On CentOS:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install NetworkManager-openvpn-gnome -y</code>
+            </blockquote>
+            <p>On Debian/Ubuntu:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install network-manager-openvpn-gnome -y</code>
+            </blockquote>
+            <p>After the install, do the configuration. In GNOME desktop settings, go to the <strong>Network</strong> tab. In the VPN settings, click the plus sign
+            <strong>+</strong> to add a VPN profile. Select <strong>Import from file</strong>. Click <strong>Add</strong>.</p>
+            <p>Toggle the connection to the ON position.</p>
+            <h3><a id="2-3"></a>2.3. Windows Client</h3>
+            <p>Download the latest OpenVPN windows installer from the <a href="https://openvpn.net/community-downloads" target="_blank">OpenVPN website</a>. It will have a name
+            such as <code>OpenVPN-2.5-rc2-I601-amd64.msi</code>. Run the installer. During installation, accept the defaults.</p>
+            <p>Double-click the OpenVPN GUI on your desktop to launch OpenVPN for the first time. When you get a message to say that no configuration profiles existing yet, click
+            <strong>OK</strong>.</p>
+            <p>Locate the OpenVPN icon in the system tray. Right click on the icon, and select <strong>Import file</strong>. Select the file you downloaded from the server. Click
+            <strong>Open</strong>. You should see a message to say the file was imported successfully. Click <strong>OK</strong>.</p>
+            <p>Again locate the OpenVPN icon in the system tray. Right-click. Select <strong>Connect</strong>.</p>
+            <h3><a id="2-4"></a>2.4. macOS Client</h3>
+            <p>Many people use the Tunnelblick open-source VPN client. Download the macOS client software from the <a href="https://tunnelblick.net/downloads.html" target="_blank">Tunnelblick website</a>. Install Tunnelblick from the <code>.dmg</code> file in your Downloads folder.</p>
+            <p>Once Tunnelblick is running, you can control it from the Tunnelblick icon in your menu bar. Import your OpenVPN configuration file. Use the menu to
+            <strong>Connect</strong> to the server.</p>
+            <h3><a id="2-5"></a>2.5. Android Client</h3>
+            <p>You can connect your PC to your Android phone or tablet with a USB cable. Copy the OpenVPN configuration file from your PC to your Android device.</p>
+            <p>Install the OpenVPN for Android app by Arne Schwabe.</p>
+            <p>Launch OpenVPN for Android. Initially, no OpenVPN profiles are defined. Click the plus sign to add a new OpenVPN profile. Enter a name and tap
+            <strong>IMPORT</strong>.</p>
+            <p>After import, tap the server to make your connection request.</p>
+            <h3><a id="2-6"></a>2.6. iOS Client</h3>
+            <p>Copy your OpenVPN configuration file to your iPad or iPhone.</p>
+            <p>From the App Store, install the OpenVPN Connect app.</p>
+            <p>Once the app is installed, tap on the OVPN configuration. Choose to open it with OpenVPN. Tap <strong>Add</strong>. Tap <strong>Add</strong> again.</p>
+            <p>To connect, toggle the line for your server to the ON position.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>Here are some sources of support if you have questions or problems:</p>
+            <ul>
+                <li>If you have questions about OpenVPN configuration in general, consult the <a href="https://openvpn.net/community-resources/reference-manual-for-openvpn-2-4" target="_blank">OpenVPN Manual</a>
+                </li>
+                <li>You can ask questions about NAT IPv4 servers on the <a href="https://talk.lowendspirit.com/" target="_blank">Low End Spirit forums</a>
+                </li>
+                <li>You can ask questions about OpenVPN on the <a href="https://forums.openvpn.net/" target="_blank">OpenVPN forums</a>
+                </li>
+                <li>If you discover a defect in the Nyr OpenVPN installer, create an issue on its GitHub <a href="https://github.com/Nyr/openvpn-install/issues" target="_blank">issues page</a>
+                </li>
+            </ul>
+            <p><em>Updated 2020-10</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

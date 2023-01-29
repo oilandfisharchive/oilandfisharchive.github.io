@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>How to Connect to a Proxy Before Tor in Whonix</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>How to Connect to a Proxy Before Tor in Whonix</h1>
+            <p>Connecting to a proxy before Tor helps to evade censorship. It also mitigates the risk of being dependent on Tor alone.</p>
+            <p>This article provides practical instructions to complement the material on this subject in the <a href="https://www.whonix.org/wiki/Tunnels/Connecting_to_a_proxy_before_Tor" target="_blank">Whonix wiki</a>.</p>
+            <p>To follow along with this tutorial, you need a server you can connect to. This server may be set up by yourself or by a trusted friend. You could alternatively use
+            a free public-interest server. This would have the additional advantage that your traffic would be mixed in with many other people’s.</p>
+            <p>We do not describe in this article how to set up the server. We cover only the client part of the set-up. If you are interested in setting up a server, please see
+            the other articles on this site.</p>
+            <p>The general idea is to specify your server in the Whonix Gateway VM as a proxy server, so that your encrypted traffic will pass through your tunnel before it gets
+            to the Tor network.</p>
+            <h2><a id="1"></a>1. Shadowsocks</h2>
+            <h3><a id="1-1"></a>1.1. Install Shadowsocks-Libev Client on Gateway</h3>
+            <p>Shadowsocks is the original network tunneling technique designed by clowwindy.</p>
+            <p>We are going to install the C version of the Shadowsocks client on the Gateway virtual machine. Start the Gateway VM if it is not already running. Open a terminal
+            on the Whonix Gateway, and issue the commands:</p>
+            <blockquote>
+                <code>sudo apt update</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install shadowsocks-libev -y</code>
+            </blockquote>
+            <p>The installation places a default configuration file in <code>/etc/shadowsocks-libev/config.json</code>.</p>
+            <p>After the install has finished, the <code>shadowsocks-libev</code> service is active and running with the default configuration file.</p>
+            <h3><a id="1-2"></a>1.2. Obtain Shadowsocks Server Details</h3>
+            <p>Shadowsocks server configurations are usually distributed as Shadowsocks (“SS”) URLs. These are base-64 encoded strings that begin with the characters
+            <code>ss://</code>. Here is an example of what an SS URL looks like:</p>
+            <blockquote>
+                <code>ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpCcjhGd2ZMYmpSYWVxajU1QCoqLioqKi4qKiouKioqOjI5OTc0</code>
+            </blockquote>
+            <p>The base-64 part of this can be decoded by the <code>base64 --decode</code> command:</p>
+            <blockquote>
+                <code>echo 'Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpCcjhGd2ZMYmpSYWVxajU1QCoqLioqKi4qKiouKioqOjI5OTc0' | base64 --decode &amp;& echo ''</code>
+            </blockquote>
+            <p>This command yields a result like this:</p>
+            <blockquote>
+                <code>chacha20-ietf-poly1305:Br8FwfLbjRaeqj55@**.***.***.***:29974</code>
+            </blockquote>
+            <p>You must pick the parameters out of the result. Continuing this example, this gives you these configuration parameters:</p>
+            <ul>
+                <li>Server IP address <code>**.***.***.***</code></li>
+                <li>Server port <code>29974</code></li>
+                <li>Encryption method <code>chacha20-ietf-poly1305</code></li>
+                <li>Password <code>Br8FwfLbjRaeqj55</code></li>
+            </ul>
+            <h3><a id="1-3"></a>1.3. Configure Shadowsocks-Libev Client on Gateway</h3>
+            <p>Install the <code>vi</code> editor:</p>
+            <blockquote>
+                <code>sudo apt install vim -y</code>
+            </blockquote>
+            <p>Edit the default configuration file, <code>/etc/shadowsocks-libev/config.json</code>.</p>
+            <blockquote>
+                <code>sudo vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Insert contents as follows, replacing the template parameters with the actual values for your server. Continuing the example given above, this would imply a
+            configuration file like this:</p>
+            <pre>{
+  "server": "**.***.***.***",
+  "server_port": 29974,
+  "local_address": "127.0.0.1",
+  "local_port":1080,
+  "password": "Br8FwfLbjRaeqj55",
+  "method": "chacha20-ietf-poly1305",
+  "timeout": 300,
+  "fast_open": false,
+  "nameserver": "8.8.8.8",
+  "mode": "tcp_only"
+}
+</pre><img src="../images/proxy-ss-config.png" alt="Shadowsocks client configuration JSON file">
+            <p>The parameters you specify on the client must match up with what you chose on the server.</p>
+            <p>Save the file <code>/etc/shadowsocks-libev/config.json</code>.</p>
+            <h3><a id="1-4"></a>1.4. Configure Systemd Service File on Gateway</h3>
+            <p>Edit the systemd service file <code>/lib/systemd/system/shadowsocks-libev.service</code>.</p>
+            <blockquote>
+                <code>sudo vi /lib/systemd/system/shadowsocks-libev.service</code>
+            </blockquote>
+            <p>Make the file look like this:</p>
+            <pre>[Unit]
+Description=Shadowsocks-Libev Local Client
+Documentation=man:ss-local(1)
+After=network.target
+[Service]
+Type=simple
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+User=tunnel
+Group=tunnel
+ExecStart=/usr/bin/ss-local -c /etc/shadowsocks-libev/config.json
+[Install]
+WantedBy=multi-user.target
+</pre><img src="../images/proxy-systemd-service.png" alt="Shadowsocks client systemd service file">
+            <p>Save the file <code>/lib/systemd/system/shadowsocks-libev.service</code>.</p>
+            <p>Reload systemd for your changes:</p>
+            <blockquote>
+                <code>sudo systemctl daemon-reload</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Start Shadowsocks-Libev Client on Gateway</h3>
+            <p>Restart Shadowsocks-Libev with your new configuration:</p>
+            <blockquote>
+                <code>sudo systemctl restart shadowsocks-libev</code>
+            </blockquote>
+            <p>Check that the Shadowsocks-Libev client is running and listening on port <code>1080</code>:</p>
+            <blockquote>
+                <code>sudo systemctl status shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>ss -tulpn | grep 1080</code>
+            </blockquote>
+            <p>Close the terminal emulator.</p>
+            <h3><a id="1-6"></a>1.6. Reconfigure Anon Connection Wizard</h3>
+            <p>Tor on Whonix is controlled by the configuration files stored in the Gateway machine’s directory <code>/usr/local/etc/torrc.d</code>. We can write new
+            <code>torrc</code> files automatically by reinvoking the <strong>Anon Connection Wizard</strong>. It is under the <strong>System</strong> menu group.</p><img src=
+            "../images/proxy-configure.png" alt="Anon Connection Wizard with Configure selected">
+            <ol>
+                <li>Select <strong>Configure</strong>.</li>
+                <li>Check or do not check the box for bridges, as you prefer.</li>
+                <li>Check the box to say you want to use a proxy before connecting to the Tor network.</li>
+                <li>Specify the <strong>SOCKS5</strong> proxy on <code>127.0.0.1</code> port <code>1080</code>.</li>
+                <li>Click <strong>Next</strong></li>
+                <li>Click <strong>Next</strong> again</li>
+                <li>Wait for the Tor bootstrapping to reach 100%.</li>
+                <li>Click <strong>Finish</strong>.</li>
+            </ol><img src="../images/proxy-use-proxy.png" alt="Anon Connection Wizard for SOCKS5 proxy on localhost port 1080">
+            <p>When the Anon Connection Wizard runs, it writes the new <code>torrc</code> to <code>/usr/local/etc/torrc.d/40_tor_control_panel.conf</code>. Advanced users can add
+            extra parameters in <code>/usr/local/etc/torrc.d/50_user.conf</code> if they manually restart Tor afterwards.</p>
+            <p>Minimize the Gateway virtual machine.</p>
+            <h3><a id="1-7"></a>1.7. Check Workstation</h3>
+            <p>Go to the Workstation virtual machine. Open the Whonix Tor Browser. Do an end-to-end test of your connectivity by visiting <a href="https://check.torproject.org/" target="_blank">https://check.torproject.org</a>.</p><img src="../images/proxy-congratulations.png" alt="Congratulations: This browser is configured to use Tor">
+            <h2><a id="3"></a>2. Troubleshooting</h2>
+            <p>If you experience any difficulties operating Whonix, visit the <a href="https://forums.whonix.org/" target="_blank">Whonix forums</a>.</p>
+            <p>For Shadowsocks, you can ask questions on social media, or file legitimate issues on the appropriate GitHub issues page:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-libev/issues" target="_blank">Shadowsocks-Libev</a>
+                </li>
+            </ul>
+            <p><em>Updated 2021-06-19</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

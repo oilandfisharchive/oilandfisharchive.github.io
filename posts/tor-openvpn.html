@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tor + OpenVPN</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Tor + OpenVPN</h1>
+            <p>In the solution we describe in this article:</p>
+            <ul>
+                <li>We collect all the computer’s network traffic by installing a virtual private network (VPN) client.</li>
+                <li>We pass our traffic through Tor before it gets to the OpenVPN server by defining Tor as a SOCKS proxy to the OpenVPN client.</li>
+                <li>To overcome domestic blocking of Tor, we use a bridge.</li>
+            </ul>
+            <p>This solution has the additional advantage that your exit node will be a VPN server, and not an obvious Tor server. This can be useful if you visit websites that
+            block or impede Tor users.</p>
+            <p>The client in our examples runs Windows 10.</p>
+            <h2><a id="1"></a>1. Create VPN Account</h2>
+            <p>You need a VPN provider so that you can connect to a VPN server after passing through Tor. Some privacy-focused providers you might consider are <a href="https://www.ivpn.net/" target="_blank">IVPN</a>, <a href="https://mullvad.net/" target="_blank">Mullvad</a>, and <a href="https://airvpn.org/" target="_blank">AirVPN</a>. These are only possibilities, and not necessarily recommendations. You will need to look for a provider:</p>
+            <ul>
+                <li>who offers TCP servers</li>
+                <li>who allows you to connect to their servers from Tor nodes</li>
+                <li>whose payment methods are accessible from your country</li>
+            </ul>
+            <p>As you search for a suitable VPN provider, beware of affiliate pages posing as reviews. Also be skeptical of claims not to keep logs. In the past, at least one
+            provider turned out to be dishonest in this respect. And watch out for <a href="https://www.zdnet.com/article/many-free-mobile-vpn-apps-are-based-in-china-or-have-chinese-ownership" target="_blank">free VPNs based in mainland China</a> which are
+            under the control of the Chinese Communist Party.</p>
+            <h2><a id="2"></a>2. Install Tor Browser</h2>
+            <p>In many countries, you can download Tor Browser from <a href="https://www.torproject.org/download/languages" target="_blank">www.torproject.org</a>.</p>
+            <p>Some countries block the domain <code>www.torproject.org</code>, making it difficult for netizens to get a copy of Tor Browser. The <strong>GetTor</strong> service
+            can help these users. Simply send an email to <a href="mailto:gettor@torproject.org">gettor@torproject.org</a>. It will automatically respond with alternative download
+            links for Tor Browser. These download links point to GitHub, GitLab, the Internet Archive, and Google Drive. At least one of these hosting providers should be
+            accessible from any country. For example, users from China can download Tor Browser from the Tor Project’s GitHub mirror.</p>
+            <p>At the time of writing, the installer <code>.exe</code> file is about 64 MB. Once you have downloaded it, run the installer to install Tor Browser on your PC.</p>
+            <p>Do not connect directly, though. First, we need to configure Tor to use a bridge. We do this in the next step.</p>
+            <h2><a id="3"></a>3. Configure Tor</h2>
+            <p>In countries where you cannot directly connect to the Tor network, you need to use bridges. Bridges are unlisted Tor relays and, depending on the bridge type, they
+            can obfuscate network traffic in a way that’s more difficult for censors to detect.</p>
+            <p>The simplest method of censorship circumvention in Tor Browser is to use the built-in bridges — a set of a dozen bridges that come with Tor Browser. These bridges
+            are essentially public, which is why more aggresive censorship systems (such as China’s Great Firewall) block them. But they are still effective in many countries,
+            e.g. Iran.</p>
+            <ol>
+                <li>Launch Tor Browser for the first time.</li>
+                <li>Click <strong>Configure</strong>.</li>
+                <li>Select <strong>Tor is censored in my country</strong>.</li>
+                <li>Choose <strong>Select a built-in bridge</strong>.</li>
+                <li>From the dropdown list, select <strong>obfs4</strong>.</li>
+                <li>Now you can click <strong>Connect</strong>.</li>
+            </ol>
+            <p>If you need alternative bridges, use a Gmail account to email <a href="mailto:bridges@torproject.org">bridges@torproject.org</a>. Leave the subject line blank and
+            write <code>get transport obfs4</code> in the body of the email.</p>
+            <p>Note that in China you will probably have to use <strong>meek-azure</strong> instead of <strong>obfs4</strong>. If your version of Tor Browser offers
+            <strong>snowflake</strong>, that may also work.</p>
+            <p>One you have connected, visit <a href="https://check.torproject.org/" target="_blank">check.torproject.org</a> to confirm that you are connecting through Tor. You
+            should see the text: “Congratulations. This browser is configured to use Tor.”</p>
+            <h2><a id="4"></a>4. Download OpenVPN Client</h2>
+            <p>Some VPN providers offer their own client software as an alternative to the standard OpenVPN client. In this scenario, we need to use the standard OpenVPN
+            client.</p>
+            <p>Using your regular browser, download the 64-bit Microsoft Installer (MSI) for Windows 10 from the <a href="https://openvpn.net/community-downloads" target="_blank">OpenVPN website</a>.</p>
+            <p>Once you have downloaded it, run the <code>.msi</code> installer to install the OpenVPN client on your computer.</p>
+            <p>At the end, it displays a message to say that there are no connection profiles (i.e. configuration files) yet. This is okay. Just press <strong>OK</strong>.</p>
+            <h2><a id="5"></a>5. Download OpenVPN Configuration File</h2>
+            <p>OpenVPN can use either UDP or TCP protocol, but Tor can only handle TCP. For our scenario, we must therefore use TCP.</p>
+            <p>Choose a location from among those offered by your VPN provider. This will be your exit node after you have passed through Tor.</p>
+            <p>Download your VPN provider’s configuration file for your chosen location and for protocol TCP. It will have a name that ends in <code>.ovpn</code>.</p>
+            <h2><a id="6"></a>6. Edit OpenVPN Configuration File</h2>
+            <p>In the windows search box, type <code>notepad</code>. Open the Notepad built-in app. Edit the <code>.ovpn</code> file you just downloaded. We are going to insert a
+            new line that looks like this:</p>
+            <blockquote>
+                <code>socks-proxy <em>server</em> [<em>port</em>]</code>
+            </blockquote>
+            <p>This tells the OpenVPN client to connect to the VPN server via a SOCKS5 proxy at address <code><em>server</em></code> and port <code><em>port</em></code>.</p>
+            <p>The Tor client that comes with Tor Browser listens on localhost port <code>9150</code>. Therefore the line you actually insert will be:</p>
+            <blockquote>
+                <code>socks-proxy 127.0.0.1 9150</code>
+            </blockquote>
+            <p>Do <strong>File</strong> &gt; <strong>Save</strong> to save the file. Close Notepad.</p>
+            <h2><a id="7"></a>7. End-to-End Test</h2>
+            <p>If you have not already done so, start Tor Browser, but minimize it. This keeps Tor listening on port 9150.</p>
+            <p>Find the OpenVPN GUI from the icon in the system tray. Right-click on the icon to bring up the OpenVPN menu.</p>
+            <p>Select <strong>Import file</strong>, find your edited <code>.ovpn</code> configuration file, and open it. After the file is imported successfully, click
+            <strong>OK</strong>.</p>
+            <p>Again, bring up the OpenVPN menu from the system tray. Now there are more options. Select the menu option <strong>Connect</strong> to connect to your OpenVPN
+            server.</p>
+            <p>Enter your username and password for your VPN provider. Check the option to save your password. Click <strong>OK</strong>.</p>
+            <p>Open your regular browser and visit <a href="https://ipchicken.com/" target="_blank">IPchicken.com</a>. You should see the IP address of your provider’s OpenVPN
+            server, not your local client IP address. Your request has reached the OpenVPN server via Tor, using a bridge to reach the Tor network.</p>
+            <h2><a id="8"></a>8. Note for Linux Clients</h2>
+            <p>As stated in the introduction, this post is for Windows 10 users. If you want to adapt it for Linux, you will need to look at your routing table:</p>
+            <blockquote>
+                <code>sudo route -n</code>
+            </blockquote>
+            <p>It may be that starting OpenVPN with the <code>socks-proxy</code> option has caused OpenVPN to add an extra entry for destination <code>127.0.0.1</code>. This makes
+            sense with an external SOCKS proxy, but not with an internal SOCKS proxy. Therefore you should delete this route:</p>
+            <blockquote>
+                <code>sudo route del -net 127.0.0.1 gw G.G.G.G netmask 255.255.255.255</code>
+            </blockquote>
+            <p>where <code>G.G.G.G</code> is your default gateway.</p>
+            <p>You also need to tell the routing to reach your Tor entry node outside of the VPN:</p>
+            <blockquote>
+                <code>sudo route add -net E.E.E.E netmask 255.255.255.255 gw G.G.G.G</code>
+            </blockquote>
+            <p>where <code>E.E.E.E</code> is your Tor entry node (either a bridge or a guard node) and <code>G.G.G.G</code> is your default gateway. This will only work if your
+            entry node is relatively static.</p>
+            <p>It should be possible to script these route table changes and invoke them with the OpenVPN <code>route-up</code> option. The corresponding option when taking down
+            the VPN is <code>route-pre-down</code>. Neither of these possibilities has been tested.</p>
+            <h2><a id="9"></a>9. Get Help and Report Issues</h2>
+            <p>Some avenues to get help and report issues:</p>
+            <ul>
+                <li>
+                    <a href="https://tor.stackexchange.com/" target="_blank">Tor on Stack Exchange</a>
+                </li>
+                <li>
+                    <a href="https://www.reddit.com/r/TOR" target="_blank">Tor on Reddit</a>
+                </li>
+                <li>
+                    <a href="https://forums.openvpn.net/" target="_blank">OpenVPN forums</a>
+                </li>
+            </ul>
+            <p><em>Updated 2021-06-19</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

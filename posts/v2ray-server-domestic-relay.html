@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>V2Ray Server with Domestic Relay</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>V2Ray Server with Domestic Relay</h1>
+            <p>In this article, we forward traffic to a foreign V2Ray server via a domestic relay server. This configuration has two potential advantages:</p>
+            <ul>
+                <li>Speed</li>
+                <li>Overcoming censorship</li>
+            </ul>
+            <p>An example of speed would be China. Due to congestion, it can be more efficient to have a domestic relay in Shenzhen and a V2Ray server in Hong Kong.</p>
+            <p>An example of overcoming censorship would be Iran during the shutdown of November 2019. It was discovered you could still connect to the Internet if you used a
+            relay in a domestic data center.</p>
+            <p>For the best ability to overcome censorship, we will implement the V2Ray server as V2Ray + WebSocket + TLS. The camouflage website on the same server will run on
+            Nginx.</p>
+            <p>For the relay server, we will use a minimal configuration of Go Simple Tunnel (Gost).</p>
+            <p>In the examples in this article, we use these placeholders for IP addresses:</p>
+            <ul>
+                <li>Your local PC has IP address <code>xx.xx.xx.xx</code></li>
+                <li>The domestic relay has IP address <code>yy.yy.yy.yy</code></li>
+                <li>The foreign V2Ray server has hostname <code>zzz.yyyyy.xyz</code> and IP address <code>zz.zz.zz.zz</code></li>
+            </ul>
+            <p>We give instructions for both CentOS 8 and Debian 10 servers. Fedora and RHEL will be similar to CentOS 8, and Ubuntu and derivatives will be similar to Debian
+            10.</p><img src="../images/v2ray-gost.png" alt="Local V2Ray client PC, domestic Gost relay, and foreign V2Ray server">
+            <h2><a id="1"></a>1. Prepare V2Ray Server</h2>
+            <h3><a id="1-1"></a>1.1. Obtain VPS and Domain Name</h3>
+            <p>Obtain a VPS. In the rest of this article, we will write its IP address as <code>zz.zz.zz.zz</code>.</p>
+            <p>Obtain a domain name. We will give <code>yyyyy.xyz</code> as our example domain name, <code>and zzz.yyyyy.xyz</code> as our example host name for the V2Ray
+            server.</p>
+            <p>Create a DNS <code>A</code> record pointing from hostname <code>zzz.yyyyy.xyz</code> to the server IP address <code>zz.zz.zz.zz</code>.</p>
+            <h3><a id="1-2"></a>1.2. Update Server</h3>
+            <p>Update your server. On CentOS 8:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <p>On Debian 10:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Open Firewall</h3>
+            <p>If you have implemented a firewall on your server, you must open port <code>80</code> and port <code>443</code>. On CentOS 8:</p>
+            <blockquote>
+                <code>firewall-cmd --permanent --zone=public --add-service=http</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --permanent --zone=public --add-service=https</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --reload</code>
+            </blockquote>
+            <p>Debian 10:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport {http, https} counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Implement BBR TCP Congestion Control</h3>
+            <p>Bottleneck Bandwidth and Round-trip propagation time (BBR) is a TCP congestion control algorithm developed at Google. Under certain types of congestion, it will
+            improve your latency.</p>
+            <blockquote>
+                <code>cat &gt;&gt; /etc/sysctl.d/50-bbr.conf &lt;&lt;EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>net.core.default_qdisc=fq</code>
+            </blockquote>
+            <blockquote>
+                <code>net.ipv4.tcp_congestion_control=bbr</code>
+            </blockquote>
+            <blockquote>
+                <code>EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/50-bbr.conf</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Install and Configure V2Ray on Server</h2>
+            <h3><a id="2-1"></a>2.1. Download and Install V2Ray</h3>Download and run the V2Ray installation script. On CentOS 8:
+            <blockquote>
+                <code>yum install wget -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>bash install-release.sh</code>
+            </blockquote>One Debian 10:
+            <blockquote>
+                <code>apt install wget -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>bash install-release.sh</code>
+            </blockquote>
+            <p>The script ends its run with a messages such as <code>V2Ray v4.27.0 is installed</code>.</p>
+            <h3><a id="2-2"></a>2.2. Configure V2Ray</h3>
+            <p>Edit the V2Ray configuration file.</p>
+            <blockquote>
+                <code>vi /usr/local/etc/v2ray/config.json</code>
+            </blockquote>
+            <p>Insert the template below for V2Ray + WebSocket + TLS. The TLS part will be handled by Nginx, which we will set up in the next section.</p>
+            <ul>
+                <li>Replace <code>b5cdf5f5-7ef3-40a0-8c78-b66357f1a386</code> by your choice for UUID.</li>
+                <li>Replace <code>64</code> by your choice for alterId.</li>
+                <li>Replace <code>/secret12</code> by your choice of secret path for V2Ray.</li>
+            </ul>
+            <pre>{
+  "log": {
+    "loglevel": "warning",
+    "access": "/var/log/v2ray/access.log", 
+    "error": "/var/log/v2ray/error.log"
+  },
+  "inbounds": [{
+    "listen" : "127.0.0.1",
+    "port": 10000,
+    "protocol": "vmess",
+    "settings": {
+      "clients": [
+        {
+          "id": "b5cdf5f5-7ef3-40a0-8c78-b66357f1a386",
+          "level": 1,
+          "alterId": 64
+        }
+      ]
+    },
+    "streamSettings": {
+      "network": "ws",
+      "wsSettings": {
+        "path": "/secret12"
+      }
+    }
+  }],
+  "outbounds": [{
+    "protocol": "freedom",
+    "settings": {}
+  },{
+    "protocol": "blackhole",
+    "settings": {},
+    "tag": "blocked"
+  }],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "blocked"
+      }
+    ]
+  }
+}
+</pre>
+            <h3><a id="2-3"></a>2.3. Start V2Ray</h3>
+            <blockquote>
+                <code>systemctl enable v2ray</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start v2ray</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4 Check V2Ray</h3>
+            <p>Issue the command below:</p>
+            <blockquote>
+                <code>systemctl status v2ray</code>
+            </blockquote>
+            <p>It should show <code>active (running)</code>.</p>
+            <blockquote>
+                <code>ss -tulpn | grep v2ray</code>
+            </blockquote>
+            <p>The above should show V2Ray listening on <code>127.0.0.1</code> port <code>10000</code>.</p>
+            <blockquote>
+                <code>journalctl -u v2ray</code>
+            </blockquote>
+            <p>The above command shows the most recent messages from V2Ray. This could be useful if there are errors.</p>
+            <h2><a id="3"></a>3. Install and Configure Nginx on V2Ray Server</h2>
+            <h3><a id="3-1"></a>3.1. Install Nginx</h3>
+            <p>Install the Nginx web server. On CentOS:</p>
+            <blockquote>
+                <code>yum install nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nginx</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nginx</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install nginx -y</code>
+            </blockquote>
+            <h3><a id="3-2"></a>3.2. Configure Nginx</h3>
+            <p>On CentOS, edit <code>/etc/nginx/nginx.conf</code>. On Debian, edit <code>/etc/nginx/sites-available/default</code>.</p>
+            <p>Change the line <code>server_name _;</code> to your actual server name. For example:</p>
+            <blockquote>
+                <code>server_name zzz.yyyyy.xyz;</code>
+            </blockquote>
+            <p>Add a new <code>location</code> block. Replace <code>/secret12</code> by your choice of secret path for V2Ray.</p>
+            <blockquote>
+                <code>location /secret12 {<br>
+                proxy_redirect off;<br>
+                proxy_pass http://127.0.0.1:10000;<br>
+                proxy_http_version 1.1;<br>
+                proxy_set_header Upgrade $http_upgrade;<br>
+                proxy_set_header Connection "upgrade";<br>
+                proxy_set_header Host $http_host;<br>
+                # Show real IP if you enable V2Ray access log<br>
+                proxy_set_header X-Real-IP $remote_addr;<br>
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;<br>
+                }</code>
+            </blockquote>
+            <p>After you have finished editing, save the file, then issue the command:</p>
+            <blockquote>
+                <code>systemctl restart nginx</code>
+            </blockquote>
+            <h3><a id="3-3"></a>3.3. Enable Network Connect in SELinux</h3>
+            <p>On CentOS only, due to SELinux, you must issue the following command to allow Nginx to make network connections:</p>
+            <blockquote>
+                <code>setsebool -P httpd_can_network_connect 1</code>
+            </blockquote>
+            <p>This does not apply to Debian, which typically does not use SELinux.</p>
+            <h3><a id="3-4"></a>3.4. Add Web Content</h3>
+            <p>Add some realistic website content so that even manual inspection will make your server look like a web server. You can search for sample web templates from the
+            Internet. Here is one example. On CentOS:</p>
+            <blockquote>
+                <code>yum install zip unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/arcdetri/sample-blog/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>cp -rf sample-blog-master/html/* /usr/share/nginx/html/</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install zip unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/arcdetri/sample-blog/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo cp -rf sample-blog-master/html/* /var/www/html/</code>
+            </blockquote>
+            <h3><a id="3-5"></a>3.5. Check DNS Resolution</h3>
+            <p>On your PC, issue the command:</p>
+            <blockquote>
+                <code>nslookup zzz.yyyyy.xyz</code>
+            </blockquote>
+            <p>This should resolve to your V2Ray server IP address, which we are giving as <code>zz.zz.zz.zz</code> in our examples. If it does not resolve yet, just wait until it
+            does resolve before you go any further.</p>
+            <p>You should also be able to open a browser, visit the HTTP version of your website, and see the sample content:</p>
+            <blockquote>
+                <code>http://zzz.yyyyy.xyz</code>
+            </blockquote>
+            <h3><a id="3-6"></a>3.6. Get SSL Certificate</h3>
+            <p>Add a free Let’s Encrypt SSL certificate to your site. For CentOS 8:</p>
+            <blockquote>
+                <code>yum install epel-release -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install certbot python3-certbot-nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot --nginx --register-unsafely-without-email</code>
+            </blockquote>
+            <blockquote>
+                <code>echo "0 0,12 * * * root python3 -c 'import random; import time; time.sleep(random.random() * 3600)' &amp;& certbot renew -q" | sudo tee -a /etc/crontab &gt;
+                /dev/null</code>
+            </blockquote>
+            <p>And for Debian 10:</p>
+            <blockquote>
+                <code>apt install certbot python-certbot-nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot --nginx --register-unsafely-without-email</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot renew --dry-run</code>
+            </blockquote>
+            <p>Now you have a working web server with sample content and an SSL certificate.</p>
+            <h3><a id="3-7"></a>3.7. Add HTTP/2</h3>
+            <p>HTTP/2 can improve performance by decreasing latency.</p>
+            <p>Edit your configuration. On CentOS, edit <code>/etc/nginx/nginx.conf</code>. On Debian, edit <code>/etc/nginx/sites-available/default</code>. Add HTTP/2 to the
+            <code>listen</code> line(s), like this:</p>
+            <blockquote>
+                <code>listen [::]:443 ssl http2 ipv6only=on; # managed by Certbot</code>
+            </blockquote>
+            <blockquote>
+                <code>listen 443 ssl http2; # managed by Certbot</code>
+            </blockquote>
+            <p>Save the file. Test your configuration and restart Nginx:</p>
+            <blockquote>
+                <code>nginx -t</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl restart nginx</code>
+            </blockquote>
+            <h3><a id="3-8"></a>3.8. Optionally Add CDN</h3>
+            <p>Optionally position your server behind a Content Delivery Network by adding it to a CDN service such as Cloudflare.</p>
+            <h3><a id="3-9"></a>3.9. Optionally Test Server Alone</h3>
+            <p>Test what a casual visitor sees when they visit the HTTPS version of your website:</p>
+            <blockquote>
+                <code>https://zzz.yyyyy.xyz</code>
+            </blockquote>
+            <p>If your censorship situation allows it, and there is no risk of your V2Ray server being blocked, you can install a V2Ray client on your PC and test a direct
+            connection from client to server, without the domestic relay which we will add next.</p>
+            <h2><a id="4"></a>4. Install Gost on Relay Server</h2>
+            <p>Now obtain a second VPS to serve as your domestic relay server. It must be in a domestic data center. We give <code>yy.yy.yy.yy</code> as its IP address. The relay
+            server does not necessarily need a DNS record.</p>
+            <p>We will use a simple configuration of Gost to forward requests from the domestic relay at <code>yy.yy.yy.yy</code> to the foreign V2Ray server at
+            <code>zz.zz.zz.zz</code>.</p>
+            <h3><a id="4-1"></a>4.1. Update Server</h3>
+            <p>In the same way as you did on your V2Ray server, update the existing software packages on your relay server. On CentOS 8:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <p>On Debian 10:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <h3><a id="4-2"></a>4.2. Open Firewall</h3>
+            <p>If you implemented a firewall on the relay server, open port 443. On CentOS 8:</p>
+            <blockquote>
+                <code>firewall-cmd --permanent --zone=public --add-service=https</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --reload</code>
+            </blockquote>
+            <p>Debian 10:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport https counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="4-3"></a>4.3. Implement BBR TCP Congestion Control</h3>
+            <p>As on the main server, implement BBR congestion control:</p>
+            <blockquote>
+                <code>cat &gt;&gt; /etc/sysctl.d/50-bbr.conf &lt;&lt;EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>net.core.default_qdisc=fq</code>
+            </blockquote>
+            <blockquote>
+                <code>net.ipv4.tcp_congestion_control=bbr</code>
+            </blockquote>
+            <blockquote>
+                <code>EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/50-bbr.conf</code>
+            </blockquote>
+            <h3><a id="4-4"></a>4.4. Download Gost</h3>
+            <p>Install wget. On CentOS 8:</p>
+            <blockquote>
+                <code>yum install wget gzip -y</code>
+            </blockquote>
+            <p>On Debian 10:</p>
+            <blockquote>
+                <code>apt install wget -y</code>
+            </blockquote>
+            <p>Open a browser on your PC, and look on <a href="https://github.com/ginuerzh/gost/releases" target="_blank">GitHub</a> to see the latest version of Gost. We will use
+            the example of <code>v2.11.1</code>. Change this to the latest version at the time you follow this tutorial.</p>
+            <p>On your relay server, issue the commands:</p>
+            <blockquote>
+                <code>wget https://github.com/ginuerzh/gost/releases/download/v2.11.1/gost-linux-amd64-2.11.1.gz</code>
+            </blockquote>
+            <blockquote>
+                <code>gunzip gost-linux-amd64-2.11.1.gz</code>
+            </blockquote>
+            <blockquote>
+                <code>mv gost-linux-amd64-2.11.1 /usr/local/bin/gost</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x /usr/local/bin/gost</code>
+            </blockquote>
+            <h3><a id="4-5"></a>4.5. Create Systemd Service File</h3>
+            <p>Edit the systemd service file for Gost:</p>
+            <blockquote>
+                <code>vi /usr/lib/systemd/system/gost.service</code>
+            </blockquote>
+            <p>Insert the contents below. Replace <code>zz.zz.zz.zz</code> in the sample contents by your actual V2Ray server IP address:</p>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=GO Simple Tunnel<br>
+                After=network.target<br>
+                Wants=network.target<br>
+                <br>
+                [Service]<br>
+                Type=simple<br>
+                ExecStart=/usr/local/bin/gost -L=tcp://:443/zz.zz.zz.zz:443<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <p>This says to forward TCP input on local (<code>-L</code>) port <code>443</code> to remote IP address <code>zz.zz.zz.zz</code> port <code>443</code>.</p>
+            <p>Save the file.</p>
+            <h3><a id="4-6"></a>4.6. Disable SELinux</h3>
+            <p>This is only for CentOS. Running as is gives exit code 203. The easiest way to solve this is to edit the <code>/etc/selinux/config</code> file:</p>
+            <blockquote>
+                <code>vi /etc/selinux/config</code>
+            </blockquote>
+            <p>Set the line for SELinux status to disabled:</p>
+            <blockquote>
+                <code>SELINUX=disabled</code>
+            </blockquote>
+            <p>Save the file. Reboot the server:</p>
+            <blockquote>
+                <code>reboot</code>
+            </blockquote>
+            <h3><a id="4-7"></a>4.7. Start Gost</h3>
+            <p>Issue the commands:</p>
+            <blockquote>
+                <code>systemctl enable gost</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start gost</code>
+            </blockquote>
+            <h3><a id="4-8"></a>4.8. Check Gost</h3>
+            <p>Issue the command:</p>
+            <blockquote>
+                <code>systemctl status gost</code>
+            </blockquote>
+            <p>It should show <code>active (running)</code>.</p>
+            <blockquote>
+                <code>ss -tulpn | grep gost</code>
+            </blockquote>
+            <p>This should show Gost listening on port <code>443</code>.</p>
+            <blockquote>
+                <code>journalctl -u gost</code>
+            </blockquote>
+            <p>The above command shows the most recent messages from Gost.</p>
+            <h2><a id="5"></a>5. Install Client</h2>
+            <p>The procedure for installing a V2Ray client is the same as in the post <a href="v2ray.html#2">How to Install, Configure, and Run V2Ray + WebSocket + TLS + CDN</a>.
+            We will not repeat all the details here.</p>
+            <h3><a id="5-1"></a>5.1. Download and Install V2Ray Client</h3>
+            <p>We will just give the example of a Linux client, and even then only a brief overview. Assuming you want Linux, download the latest Linux client from <a href="https://github.com/v2ray/v2ray-core/releases" target="_blank">GitHub</a>. Unzip <code>v2ray-linux-64.zip</code>.</p>
+            <h3><a id="5-2"></a>5.2. Configure Client</h3>
+            <p>This the same as in the main post <a href="v2ray.html#2">How to Install, Configure, and Run V2Ray + WebSocket + TLS + CDN</a>, except that you must put the
+            <em>relay</em> server IP address (<code>yy.yy.yy.yy</code> in our example) in place of the V2Ray server IP address (<code>zz.zz.zz.zz</code> in our example).</p>
+            <p>Continuing our example for Linux, edit the V2Ray configuration file, <code>config.json</code>:</p>
+            <ul>
+                <li>Replace <code>yy.yy.yy.yy</code> by your actual <em>relay</em> server IP address.</li>
+                <li>Replace <code>b5cdf5f5-7ef3-40a0-8c78-b66357f1a386</code> by your choice for UUID.</li>
+                <li>Repalce <code>64</code> by your choice for alterId.</li>
+                <li>Replace <code>/secret12</code> by your choice of secret path for V2Ray.</li>
+                <li>Replace <code>zzz.yyyyy.xyz</code> by your actual <em>V2Ray</em> server host name.</li>
+            </ul>
+            <pre>{
+  "inbounds": [
+    {
+      "port": 1080,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"]
+      },
+      "settings": {
+        "auth": "noauth",
+        "udp": false
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "yy.yy.yy.yy",
+            "port": 443,
+            "users": [
+              {
+                "id": "b5cdf5f5-7ef3-40a0-8c78-b66357f1a386",
+                "alterId": 64
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "zzz.yyyyy.xyz",
+          "allowInsecure": false
+        },
+        "wsSettings": {
+          "path": "/secret12",
+          "headers" : {
+            "host": "zzz.yyyyy.xyz"
+          }
+        }
+      }
+    }
+  ]
+}
+</pre>
+            <h3><a id="5-3"></a>5.3. Run Client</h3>
+            <p>Continuing our example of a Linux client, you would change into the folder with the V2Ray binary in it and issue the command:</p>
+            <blockquote>
+                <code>./v2ray -config=config.json</code>
+            </blockquote>
+            <p>Then open Firefox. From the hamburger menu, select <strong>Preferences</strong>. In the <strong>Network Settings</strong> section, click <strong>Settings</strong>.
+            Set the network settings as follows:</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration.</strong></li>
+                <li>Fill in <code>127.0.0.1</code> in SOCKS Host.</li>
+                <li>Fill in <code>1080</code> in the Port.</li>
+                <li>Select <strong>SOCKS v5.</strong></li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5.</strong></li>
+            </ul>
+            <p>Firefox now sends requests to the local V2Ray client, which sends them to the domestic relay server, which forwards them to the foreign V2Ray server.</p>
+            <h3><a id="5-4"></a>5.4. Check Client</h3>
+            <p>In your browser, visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p>
+            <p>You should see the IP address of your foreign V2Ray server (<code>zz.zz.zz.zz</code> in our example), <em>not</em> the IP address of your PC
+            (<code>xx.xx.xx.xx</code>) or the domestic relay server (<code>yy.yy.yy.yy</code>).</p>
+            <h2><a id="6"></a>6. Get Help and Report Issues</h2>
+            <p>You can ask informal questions on social media sites such as <a href="https://www.reddit.com/r/dumbclub" target="_blank">Reddit</a>. Raise formal issues in the
+            <strong>Issues</strong> section of the appropriate repository on GitHub:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/v2ray/v2ray-core/issues" target="_blank">V2Ray</a>
+                </li>
+                <li>
+                    <a href="https://github.com/ginuerzh/gost/issues" target="_blank">Gost</a>
+                </li>
+            </ul>
+            <p><em>Updated 2020-08</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

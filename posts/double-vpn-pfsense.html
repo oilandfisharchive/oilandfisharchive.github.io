@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Double VPN with pfSense</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Double VPN with pfSense</h1>
+            <p>This article is a 2020 simplification of <a href="https://www.ivpn.net/privacy-guides/advanced-privacy-and-anonymity-part-6" target="_blank">part 6 of the Mirimir Advanced Privacy and Anonymity series</a>, which was originally written in 2013.</p><img src="../images/double-vpn-pfsense-0.png" alt=
+            "Double VPN with Linux KVM, pfSense, and live CD">
+            <p>In this configuration:</p>
+            <ul>
+                <li>Your host computer connects to VPN1</li>
+                <li>A gateway VM connects to VPN2, which is tunneled through VPN1</li>
+                <li>You do all your work on a workstation VM</li>
+            </ul>
+            <p>The workstation VM has no direct connection to the Internet. All its traffic is forced to go, via an internal network, through the gateway VM.</p>
+            <p>With two different VPNs, no single party sees both your IP address and your destination site. VPN1 sees only your origin IP address. VPN2 sees only your destination
+            site. Assuming your destination sites uses HTTPS, none of the intermediate parties sees your actual content.</p>
+            <p>The host computer in this tutorial runs Debian. Virtualization is provided by Kernel-based Virtual Machine (KVM). The gateway runs pfSense, and the workstation runs
+            a live CD edition of Debian.</p>
+            <h2><a id="1"></a>1. Initial Set Up</h2>
+            <h3><a id="1-1"></a>1.1. Select DNS Provider</h3>
+            <p>The Mirimir tutorial placed great emphasis on the privacy of your DNS requests. The 2013 article recommended you choose from the third-party DNS servers listed by
+            <a href="https://wikileaks.org/wiki/Alternative_DNS" target="_blank">WikiLeaks</a> or <a href="https://anonymous-proxy-servers.net/wiki/index.php/Censorship-free_DNS_servers" target="_blank">JonDonym</a>. Another source is <a href="https://public-dns.info/" target="_blank">public-dns.info</a>, which maintains a huge list of public DNS servers that is checked continuously, and which allows you to select DNS servers by
+            country. You could alternatively choose any other DNS provider of your choice, e.g. Google, Cloudflare, Quad9, etc.</p>
+            <p>In the examples in this article:</p>
+            <ul>
+                <li>The host computer uses DNS servers <code>1.1.1.1</code> and <code>1.0.0.1</code> for IPv4, and <code>2606:4700:4700::1111</code> and
+                <code>2606:4700:4700::1001</code> for IPv46</li>
+                <li>The gateway VM uses DNS servers <code>9.9.9.9</code> and <code>149.112.112.112</code></li>
+                <li>The workstation will be pushed <code>208.67.222.222</code> and <code>208.67.220.220</code></li>
+            </ul>
+            <h3><a id="1-2a"></a>1.2a. Configure Host DNS Servers</h3>
+            <p>This section gives the general method for changing DNS servers on Debian with GNOME desktop. The section below describes an alternative method if you choose
+            Cloudflare for your DNS servers.</p>
+            <p>Open GNOME settings, and go to the <strong>Network</strong> page if you use a wired connection or the <strong>Wi-Fi</strong> page if you use wireless.</p>
+            <ul>
+                <li>Set the IPv4 DNS servers to your choices. In our example, those are <code>1.1.1.1</code> and <code>1.0.0.1</code>.</li>
+                <li>If your networking has IPv6 enabled, also set the IPv6 DNS servers to your choices. In our example, those are <code>2606:4700:4700::1111</code> and
+                <code>2606:4700:4700::1001</code>.</li>
+            </ul>
+            <p>In theory you should just have to restart NetworkManager here, but in practice you may need to reboot.</p>
+            <h3><a id="1-2b"></a>1.2b. Alternative Method for Cloudflare DNS Servers</h3>
+            <p>You can improve your DNS security by installing dnscrypt-proxy. This prevents DNS sniffing and ISP proxying.</p>
+            <blockquote>
+                <code>sudo apt install dnscrypt-proxy</code>
+            </blockquote>
+            <p>Allow dnscrypt-proxy to bind to a privileged port by editing the systemd service file:</p>
+            <blockquote>
+                <code>vi /usr/lib/systemd/system/dnscrypt-proxy.service</code>
+            </blockquote>
+            <p>Remove the line:</p>
+            <blockquote>
+                <code>User=_dnscrypt-proxy</code>
+            </blockquote>
+            <p>Save the file. Reload systemd:</p>
+            <blockquote>
+                <code>sudo systemctl daemon-reload</code>
+            </blockquote>
+            <p>Edit the configuration:</p>
+            <blockquote>
+                <code>sudo vi /etc/dnscrypt-proxy/dnscrypt-proxy.toml</code>
+            </blockquote>
+            <p>Make it listen on IPv4 (and IPv6 if you use IPv6):</p>
+            <blockquote>
+                <code>listen_addresses = ['127.0.0.1:53', '[::1]:53']<br>
+                server_names = ['cloudflare', 'cloudflare-ipv6']</code>
+            </blockquote>
+            <p>Start the service:</p>
+            <blockquote>
+                <code>sudo systemctl enable dnscrypt-proxy.service</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl start dnscrypt-proxy.service</code>
+            </blockquote>
+            <p>As in the section above, change your GNOME settings for your main interface’s nameservers, but this time specify them as <code>127.0.0.1</code> for IPv4 (and
+            <code>::1</code> for IPv6).</p>
+            <p>In theory you should just have to restart NetworkManager after changing your nameservers, but in practice you may need to:</p>
+            <blockquote>
+                <code>reboot</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Create VPN Accounts</h3>
+            <p>You need two VPN providers. Some privacy-focused providers you might consider are <a href="https://www.ivpn.net/" target="_blank">IVPN</a>, <a href="https://mullvad.net/" target="_blank">Mullvad</a>, and <a href="https://airvpn.org/" target="_blank">AirVPN</a>. SecurityKISS, mentioned in the original article,
+            discontinued its VPN service in May 2020.</p>
+            <p>As you search for suitable VPN providers, beware of affililate pages posing as reviews. Also be skeptical of claims not to keep logs. In the past, at least one
+            provider turned out to be dishonest in this respect. And watch out for <a href="https://www.zdnet.com/article/many-free-mobile-vpn-apps-are-based-in-china-or-have-chinese-ownership" target="_blank">free VPNs based in mainland China</a> which are
+            under the control of the Chinese Communist Party.</p>
+            <p>When you have your account opened for VPN1, download the configuration file to your host PC. We’ll call it <code>vpn1.ovpn</code>. We’ll import it to the host in a
+            few minutes.</p>
+            <p>The components of the VPN2 configuration need to be split out for pfSense rather than combined in single file. We will do that when we come to the sections for
+            pfSense, so there is nothing to do for now.</p>
+            <h3><a id="1-4"></a>1.4. Configure VPN1</h3>
+            <p>At this stage, you have all the information you need to configure the VPN1 client on your host PC.</p>
+            <p>The procedure for installing the VPN client will vary, depending on which client software and which VPN provider you chose. Some providers recommend you use the
+            generic OpenVPN client, while others have their own client.</p>
+            <ul>
+                <li>If you are using the generic OpenVPN client, then install it now (<code>sudo apt install network-manager-openvpn-gnome</code>). Once it’s installed, open GNOME
+                settings, go to the <strong>Network</strong> page, add a new VPN, select <strong>Import from file</strong>, and import <code>vpn1.ovpn</code>.</li>
+                <li>If your provider has their own client, then follow your provider’s instructions to configure VPN1 on your host PC.</li>
+            </ul>
+            <p>You can test connecting to VPN1 now if you want to. Toggle the VPN connection to the ON position. After testing the connection from your browser, disconnect VPN1
+            (unless you want to leave it running for all the remaining steps).</p>
+            <h2><a id="2"></a>2. Download ISO Files</h2>
+            <h3><a id="2-1"></a>2.1. Download pfSense</h3>
+            <p>Download the latest pfSense compressed ISO from the <a href="https://www.pfsense.org/download" target="_blank">pfSense download page</a>.</p>
+            <ol>
+                <li>The <strong>Version</strong> will be prefilled with the latest version (currently <code>2.4.5-p1</code>)</li>
+                <li>For <strong>Architecture</strong>, select AMD64 (64-bit)</li>
+                <li>The <strong>Installer</strong> you want is a CD image (ISO) installer</li>
+                <li>Choose a <strong>Mirror</strong> from New York, Austin TX, Frankfurt, or Singapore</li>
+            </ol>
+            <p>Click the DOWNLOAD button. By default, the file is saved in your <code>Downloads</code> directory. It has a name that looks like
+            <code>pfSense-CE-2.4.5-RELEASE-p1-amd64.iso.gz</code>. We will use this name in our examples, although it may have changed by the time you read this tutorial.</p>
+            <h3><a id="2-2"></a>2.2. Verify pfSense</h3>
+            <p>The expected SHA256 checksum is displayed underneath the DOWNLOAD button on the <a href="https://www.pfsense.org/download" target="_blank">pfSense download page</a>.</p>
+            <p>Display the actual SHA256 checksum of your downloaded file by issuing the commands:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>sha256sum pfSense-CE-2.4.5-RELEASE-p1-amd64.iso.gz</code>
+            </blockquote>
+            <p>The expected and actual values should be identical.</p>
+            <h3><a id="2-3"></a>2.3. Extract pfSense ISO</h3>
+            <p>Extract the ISO from the compressed archive:</p>
+            <blockquote>
+                <code>gunzip pfSense-CE-2.4.5-RELEASE-p1-amd64.iso.gz</code>
+            </blockquote>
+            <p>This replaces the compressed file with the extracted ISO file. In our example, it would be named <code>pfSense-CE-2.4.5-RELEASE-p1-amd64.iso</code>.</p>
+            <h3><a id="2-4"></a>2.4. Download Debian Live CD</h3>
+            <p>Open Firefox and visit the <a href="https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid" target="_blank">Debian Live CD page</a>.</p>
+            <p>Download your chosen version of the 64-bit Debian Live CD. We will choose the XFCE version of Debian, since it is lighter on resource usage than GNOME.</p>
+            <p>At the time of writing, the ISO file is named <code>debian-live-10.5.0-amd64-xfce.iso</code>. We will use this name in our sample commands. It may have changed by
+            the time you read this tutorial. The current live CD ISO file is a 2.2 GB download.</p>
+            <h3><a id="2-5"></a>2.5. Get Debian Signing Key</h3>
+            <p>The fingerprint of the Debian CD signing key is given on the <a href="https://www.debian.org/CD/verify" target="_blank">Debian website</a> as <code>DF9B 9C49 EAA9
+            2984 3258 9D76 DA87 E80D 6294 BE9B</code>. Download the public key from the Debian keyserver:</p>
+            <blockquote>
+                <code>gpg --keyserver keyring.debian.org --recv-keys DF9B9C49EAA9298432589D76DA87E80D6294BE9B</code>
+            </blockquote>
+            <p>The Debian CD signing key is imported.</p>
+            <h3><a id="2-6"></a>2.6. Verify Debian Live CD</h3>
+            <p>From the <a href="https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid" target="_blank">Debian Live CD page</a>, download the checksum file
+            <code>SHA512SUMS</code> and its signature <code>SHA512SUMS.sign</code>. You will probably have to right-click and select <strong>Save Link As</strong> to download
+            these two files.</p>
+            <p>Verify the SHA512 checksums file:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>gpg --verify SHA512SUMS.sign SHA512SUMS</code>
+            </blockquote>
+            <p>The results should include a message, <code>Good signature</code>. Do not worry if there is an additional message, <code>There is no indication that the signature
+            belongs to the owner</code>.</p>
+            <p>Display the expected SHA512 checksum by issuing the command:</p>
+            <blockquote>
+                <code>cat SHA512SUMS | grep debian-live-10.5.0-amd64-xfce.iso</code>
+            </blockquote>
+            <p>Display the actual SHA512 checksum of the Debian Live CD ISO file:</p>
+            <blockquote>
+                <code>sha512sum debian-live-10.5.0-amd64-xfce.iso</code>
+            </blockquote>
+            <p>The expected and actual values should be identical.</p>
+            <h2><a id="3"></a>3. Set Up Virtualization</h2>
+            <h3><a id="3-1"></a>3.1. Prepare Firewall</h3>
+            <p>Livbirt uses iptables to support virtualization. There have been reports of conflicts arising if you use nftables as your firewall. Until this issue is resolved,
+            it’s best to use iptables for your machine’s basic firewall. Therefore if you are using nftables, stop and disable it, uninstall it, then reconstruct your basic
+            firewall with iptables.</p>
+            <h3><a id="3-2"></a>3.2. Install KVM</h3>
+            <p>Install the Virtual Machine Manager and all its dependencies, which include <code>qemu-kvm</code> and <code>libvirt</code>:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install virt-manager</code>
+            </blockquote>
+            <p>Add yourself to the group that manages virtual machines:</p>
+            <blockquote>
+                <code>sudo usermod -aG libvirt <em>myuserid</em></code>
+            </blockquote>
+            <p>Replace <code><em>myuserid</em></code> in the above by your actual user id on the host.</p>
+            <p>In theory, you could just log off and log on again at this point. In practice, it is often better to reboot after installing virtualization:</p>
+            <blockquote>
+                <code>sudo reboot</code>
+            </blockquote>
+            <h3><a id="3-3"></a>3.3. Start Default Network</h3>
+            <p>From <strong>Activities</strong>, search for <code>virt</code>. Start Virtual Machine Manager.</p>
+            <p>Right-click on <code>QEMU/KVM</code>. Select <strong>Details</strong>. Select the <strong>Virtual Networks</strong> tab.</p>
+            <p>The network named <code>default</code> should be active and set to autostart on boot. If not, open a terminal and issue the commands:</p>
+            <blockquote>
+                <code>sudo virsh net-autostart default</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo virsh net-start default</code>
+            </blockquote>
+            <h3><a id="3-4"></a>3.4. Create Internal Network</h3>
+            <p>Still on the <strong>Virtual Networks</strong> tab, click the plus sign (<strong>+</strong>) and add a new internal network. In the wizard:</p>
+            <ol>
+                <li>For the network name, put <code>intnet</code>, and click <strong>Forward</strong></li>
+                <li>Uncheck all the IPv4 options, and click <strong>Forward</strong></li>
+                <li>Uncheck all the IPv6 options, and click <strong>Forward</strong></li>
+                <li>Select <strong>Isolated virtual network</strong>, blank out the DNS domain name at the bottom, and click <strong>Finish</strong></li>
+            </ol>
+            <p>The new network <code>intnet</code> should be active and set to autostart on boot.</p>
+            <p>Close the <code>QEMU/KVM</code> connection details window.</p><img src="../images/double-vpn-pfsense-1.png" alt="Creating a new network in Virtual Machine Manager">
+            <h2><a id="4"></a>4. Set Up Gateway</h2>
+            <h3><a id="4-1"></a>4.1. Create Gateway VM</h3>
+            <p>Create a new virtual machine in Virtual Machine Manager (<strong>File</strong> &gt; <strong>New Virtual Machine</strong>).</p>
+            <ol>
+                <li>Select <strong>Local install media</strong>, and click <strong>Forward</strong>.</li>
+                <li>Browse to <code>pfSense-CE-2.4.5-RELEASE-p1-amd64.iso</code>. Uncheck automatic operating system detection. Type <code>FreeBSD</code> (since pfSense is based
+                on FreeBSD), and select the latest version. Click <strong>Forward</strong>.</li>
+                <li>Put memory <code>1024</code>, CPUs <code>1</code>, and click <strong>Forward</strong>.</li>
+                <li>Put disk image <code>4.0</code> GiB, and click <strong>Forward</strong>.</li>
+                <li>Name the machine <code>Gateway</code>.</li>
+            </ol>
+            <p>Do not click <strong>Finish</strong> just yet! We are going to add a second network interface card.</p>
+            <ol>
+                <li>Check the box <strong>Customize configuration before install</strong>.</li>
+                <li>Now that you’ve checked that box, you can click <strong>Finish</strong>.</li>
+                <li>Select the existing NIC.</li>
+                <li>Set the device model to <code>e1000</code>.</li>
+                <li>Click <strong>Apply</strong>.</li>
+                <li>Click <strong>Add Hardware</strong>.</li>
+                <li>Select the <strong>Network</strong> page.</li>
+                <li>Select network source <code>Virtual network intnet</code>.</li>
+                <li>Now you can click <strong>Finish</strong>.</li>
+            </ol>
+            <p>Your virtual machine is ready to go with two virtual network interface cards, one for the <code>default</code> NAT network, and one for the isolated internal
+            <code>intnet</code> network.</p><img src="../images/double-vpn-pfsense-2.png" alt="VM with two network interface cards in Virtual Machine Manager">
+            <h3><a id="4-2"></a>4.2. Install pfSense on Gateway VM</h3>
+            <p>Now you can click <strong>Begin Installation</strong> to start the gateway VM. If necessary, allow the Virtual Machine Manager to inhibit your normal keyboard
+            shortcuts on the host.</p>
+            <p>In the console window, select option <code>1</code> for <code>Boot Multi User</code>, or just leave it a few seconds until it does this by default.</p>
+            <ol>
+                <li>On the Copyright and distribution notice, select <strong>Accept</strong> and press <strong>Enter</strong></li>
+                <li>On the Welcome screen, select <strong>I</strong> for install pfSense, then <strong>OK</strong> and press <strong>Enter</strong></li>
+                <li>On the Keymap Selection screen, select your keyboard, then <strong>Select</strong> and press <strong>Enter</strong></li>
+                <li>For Partitioning, select <strong>A</strong> for Auto (UFS) Guided Disk Setup, then <strong>OK</strong> and press <strong>Enter</strong></li>
+                <li>Wait while the Archive Extraction proceeds</li>
+                <li>For additional Manual Configuration, select <strong>No</strong> and press <strong>Enter</strong></li>
+                <li>On the Complete screen, select <strong>Reboot</strong> and press <strong>Enter</strong></li>
+            </ol>
+            <h3><a id="4-3"></a>4.3. Change Internal Network IP Addresses</h3>
+            <p>The gateway machine reboots. You will notice that when pfSense starts, it allocates <code>192.168.1.1/24</code> for the internal network (the LAN, from pfSense’s
+            point of view). This will work, but it could create confusion, since consumer routers often use this range for home networks.</p><img src=
+            "../images/double-vpn-pfsense-3.png" alt="pfSense first start up">
+            <p>We’ll change the internal network to use the subnet <code>192.168.100.1/24</code>.</p>
+            <p>Enter option <code>2</code> to set the interface IP address.</p>
+            <ol>
+                <li>When asked which of the available interfaces you want to configure, enter <code>2</code> for the LAN</li>
+                <li>For the new IP address, put <code>192.168.100.1</code></li>
+                <li>For the subnet bit count, put <code>24</code></li>
+                <li>There is no upstream gateway for the LAN, so leave it blank</li>
+                <li>There is no LAN IPv6 address, so leave it blank</li>
+                <li>For DHCP server, put <code>y</code> for yes</li>
+                <li>For start address for the client range, put <code>192.168.100.64</code></li>
+                <li>For start address for the client range, put <code>192.168.100.127</code></li>
+                <li>When asked if you want the webConfigurator to revert to HTTP, put <code>n</code> for no</li>
+                <li>When the new webConfigurator address is displayed, check that it looks right, then press <strong>Enter</strong></li>
+            </ol>
+            <p>The pfSense main menu is redisplayed with your new LAN IP address of <code>192.168.100.1</code>.</p>
+            <p>Leave the pfSense virtual machine running. You can minimize its window if you like.</p>
+            <h2><a id="5"></a>5. Set Up Workstation</h2>
+            <p>Create a second virtual machine in Virtual Machine Manager (<strong>File</strong> &gt; <strong>New Virtual Machine</strong>).</p>
+            <ol>
+                <li>Select <strong>Local install media</strong>, and click <strong>Forward</strong>.</li>
+                <li>Browse to <code>debian-live-10.5.0-amd64-xfce.iso</code>. Uncheck automatic operating system detection. Type <code>Debian 10</code> and select Debian 10. Click
+                <strong>Forward</strong>.</li>
+                <li>Since this will be your workstation, you can give it as much resources as you like. For example, you might put memory <code>2048</code> and CPUs
+                <code>2</code>. Click <strong>Forward</strong>.</li>
+                <li>Do not give it a disk! The idea is that this should be a live CD workstation. After the host computer is turned off, no traces will remain of its activity.
+                Therefore uncheck <strong>Enable storage for this virtual machine</strong>. Click <strong>Forward</strong>.</li>
+                <li>Name the machine <code>Workstation</code>.</li>
+                <li>Most importantly, expand Network selection, and select <code>Virtual network intnet</code>. This machine must not be attached to the NAT network!</li>
+            </ol>
+            <p>Click <strong>Finish</strong>. Select <strong>Debian GNU/Linux Live</strong>.</p>
+            <p>When the XFCE desktop appears, go to <strong>Applications</strong> &gt; <strong>Settings</strong> &gt; <strong>Display</strong> and make the resolution bigger if
+            you like. You may need to resize the window for the workstation.</p>
+            <h2><a id="6"></a>6. Run pfSense Set Up Wizard</h2>
+            <h3><a id="6-1"></a>6.1. First Time Login</h3>
+            <p>We’re going to log into the pfSense WebGUI from the workstation VM.</p>
+            <p>In the workstation VM, open Firefox (<strong>Applications</strong> &gt; <strong>Web Browser</strong>).</p>
+            <ol>
+                <li>Navigate to <code>https://192.168.100.1</code>. This was the LAN address we chose for the pfSense gateway VM.</li>
+                <li>You will see a warning about a potential security risk. This is because the certificate is self-signed.</li>
+                <li>Click <strong>Advanced</strong>.</li>
+                <li>Scroll down. Click <strong>Accept the Risk and Continue</strong>.</li>
+            </ol>
+            <p>Sign in as user <code>admin</code> with password <code>pfsense</code>. We’ll change the default password in a moment.</p>
+            <h3><a id="6-2"></a>6.2. Run Set Up Wizard</h3>
+            <p>The first-time wizard is displayed immediately.</p>
+            <ol>
+                <li>On the Welcome screen, click <strong>Next</strong>.</li>
+                <li>On the Global Support screen, click <strong>Next</strong>.</li>
+                <li>On the General Information screen, put your choices of DNS servers for the gateway. In our example, we are going to use primary <code>9.9.9.9</code> and
+                secondary <code>149.112.112.112</code> here. Uncheck the box that allows these to be overridden from the WAN. Click <strong>Next</strong>.</li>
+                <li>On the Time Server screen, click <strong>Next</strong>.</li>
+                <li>On the WAN screen, click <strong>Next</strong>.</li>
+                <li>On the LAN screen, you will see your choice of <code>192.168.100.1</code>. Click <strong>Next</strong>.</li>
+                <li>On the Password screen, choose your new administrator password, reenter it, and click <strong>Next</strong>.</li>
+                <li>On the Reload screen, click <strong>Reload</strong>.</li>
+            </ol>
+            <p>Wait for the reload to complete.</p>
+            <p>Now, back in the gateway console, choose option <code>5</code> and confirm with <code>y</code> for yes to reboot pfSense.</p>
+            <h2><a id="7"></a>7. Add VPN Client to pfSense</h2>
+            <h3><a id="7-1"></a>7.1. Get VPN Details</h3>
+            <p>At this point, the workstation has direct access to the Internet via the gateway.</p>
+            <p>If you want extra privacy, you could turn on VPN1 on the host for a moment. Download the configuration file from your VPN2 provider to your workstation VM. You can
+            then turn off VPN1 on the host.</p>
+            <p>For pfSense, you are going to have to extract details from your VPN2 configuration file. You can use the text editor (<strong>Applications</strong> &gt;
+            <strong>Accessories</strong> &gt; <strong>Mousepad</strong>) for this. You want to be able to identify:</p>
+            <ul>
+                <li>The Certificate Authority (CA) certificate</li>
+                <li>The client certificate</li>
+                <li>The client key</li>
+                <li>All the other configuration parameters</li>
+            </ul>
+            <p>Not all VPN providers will give you all the certificates. Procedures vary tremendously from VPN provider to VPN provider. Some give you separate files; some give
+            you an all-in-one configuration file.</p>
+            <h3><a id="7-2"></a>7.2. Add Certificates</h3>
+            <p>In most cases, whether all-in-one or separate files, you will get a CA certificate, a client certificate, and a client key. In the pfSense WebGUI running on your
+            workstation, log in using your new password rather than the default. Go to <strong>System</strong> &gt; <strong>Cert. Manager</strong>.</p>
+            <p>On the <strong>CAs</strong> tab, add a new CA certificate.</p>
+            <ol>
+                <li>The name can be <code>ca2</code> or whatever you like.</li>
+                <li>Method is <strong>Import an existing Certificate Authority</strong>.</li>
+                <li>Copy and paste the contents of your provider’s CA certificate to the box for <strong>Certificate data</strong>.</li>
+                <li>Click <strong>Save</strong>.</li>
+            </ol>
+            <p>On the <strong>Certificates</strong> tab, add a new certificate.</p>
+            <ol>
+                <li>Method is <strong>Import an existing Certificate</strong>.</li>
+                <li>Name can be <code>client2</code> or whatever you like.</li>
+                <li>Copy and paste the contents of client certificate to the box for <strong>Certificate data</strong>.</li>
+                <li>Copy and paste the contents of your client key to the box for <strong>Private key data</strong>.</li>
+                <li>Click <strong>Save</strong>.</li>
+            </ol><img src="../images/double-vpn-pfsense-4.png" alt="Creating new certificate in pfSense">
+            <h3><a id="7-3"></a>7.3. Add OpenVPN Client</h3>
+            <p>In the pfSense WebGUI running on your workstation, go to <strong>VPN</strong> &gt; <strong>OpenVPN</strong>. Go to the <strong>Clients</strong> tab. Click the
+            button to a new VPN client.</p>
+            <p>The details are highly dependent on what your VPN2 provider gave you in the <code>vpn2.ovpn</code> file. Again, this will vary from VPN provider to VPN provider.
+            What follows is very much just an example.</p>
+            <ul>
+                <li>You may be able to leave many fields at their default values.</li>
+                <li><strong>Server host or address</strong> is the IP address of the VPN2 server.</li>
+                <li>You will get a username and password from most VPN providers.</li>
+                <li><strong>Use a TLS key</strong> was checked (in our example).</li>
+                <li><strong>Automatically generate a TLS key</strong> was unchecked because we are going to enter it from the configuration file.</li>
+                <li><strong>TLS key</strong> for us was the OpenVPN static key between the open and closing <code>tls-crypt</code> tags in the <code>.ovpn</code> file.</li>
+                <li><strong>TLS Key Usage Mode</strong> was <strong>TLS Encryption and Authentication</strong>.</li>
+                <li><strong>Client certificate</strong> was <code>client2</code>.</li>
+                <li><strong>Encryption algorithm</strong> in our example was <strong>AES-128-GCM</strong>.</li>
+                <li><strong>Compression</strong> in our example was <strong>Omit preference (use OpenVPN default)</strong>.</li>
+                <li><strong>Custom options</strong> (separated by semicolons) were <code>persist-key; persist-tun; remote-cert-tls server; tls-cipher
+                TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256</code></li>
+            </ul>
+            <p>Just to emphasize the point, you will have to change all the above according to the configuration of your VPN2 provider’s server. The values given were just
+            examples.</p>
+            <p>When you have entered all the details for your VPN2, click <strong>Save</strong>.</p><img src="../images/double-vpn-pfsense-5.png" alt=
+            "Creating OpenVPN client in pfSense">
+            <h3><a id="7-4"></a>7.4. Check VPN Status</h3>
+            <p>In the pfSense WebGUI running on your workstation, go to <strong>Status</strong> &gt; <strong>OpenVPN</strong>. The <strong>Status</strong> should be
+            <code>up</code>.</p>
+            <p>Go to <strong>Status</strong> &gt; <strong>System Logs</strong> &gt; <strong>OpenVPN</strong>. The messages should include <code>Initialization Sequence
+            Completed</code>.</p>
+            <h3><a id="7-5"></a>7.5. Amend DHCP Server DNS Servers</h3>
+            <p>These are the DNS servers that will be pushed to the workstation. Look again at <strong>Status</strong> &gt; <strong>System Logs</strong> &gt;
+            <strong>OpenVPN</strong>. See if there is a line <code>PUSH: Received control message</code>. If so, look for <code>dhcp-option DNS</code> followed by IP
+            addresses.</p>
+            <ul>
+                <li>If you received pushed DNS servers, go to <strong>Services</strong> &gt; <strong>DHCP Server</strong> and specify those IP addresses as your DNS servers.</li>
+                <li>If you did <em>not</em> receive pushed DNS servers, go to <strong>Services</strong> &gt; <strong>DHCP Server</strong> and specify some other DNS servers from
+                the sources listed in <a href="#1-1">section 1.1</a> above. The idea is to segment your DNS usage over different servers whenever possible. We are using
+                <code>208.67.222.222</code> and <code>208.67.220.220</code> in this example.
+                </li>
+            </ul>
+            <p>Click <strong>Save</strong>.</p><img src="../images/double-vpn-pfsense-6.png" alt="Amending DHCP DNS servers in pfSense">
+            <h3><a id="7-6"></a>7.6. Create Interface</h3>
+            <p>At this point, pfSense is not routing anything through OpenVPN, and your workstation VM has no Internet connectivity. That’s normal. Don’t worry.</p>
+            <p>Go to <strong>Interfaces</strong> &gt; <strong>Assignments</strong>. Click the plus sign <strong>+</strong> to create <code>OPT1</code> interface
+            <code>ovpnc1</code> (OpenVPN client interface 1).</p>
+            <ol>
+                <li>Click <code>OPT1</code> to edit its details.</li>
+                <li>Check <strong>Enable interface</strong>.</li>
+                <li>Click <strong>Save</strong>.</li>
+                <li>Click <strong>Apply Changes</strong>.</li>
+            </ol><img src="../images/double-vpn-pfsense-7.png" alt="Add OPT1 interface in pfSense">
+            <h3><a id="7-7"></a>7.7. Configure NAT</h3>
+            <p>Now we configure Network Address Translation (NAT) for the new interface <code>OPT1</code>. Go to <strong>Firewall</strong> &gt; <strong>NAT</strong>.</p>
+            <ol>
+                <li>Select the <strong>Outbound</strong> tab.</li>
+                <li>Select <strong>Manual Outbound NAT rule generation</strong>..</li>
+                <li>Click <strong>Save</strong>.</li>
+                <li>Click <strong>Apply Changes</strong>.</li>
+            </ol>
+            <p>After the changes are applied, there will be either four or six rules: two for localhost to WAN IPv4, possibly two for localhost to WAN IPv6, and two for LAN to
+            WAN.</p>
+            <p>Add a new rule for interface <code>OPT1</code>, with source equal to your subnet <code>192.168.100.1/24</code>. Click <strong>Save</strong>.</p>
+            <p>Hit the <strong>Apply Changes</strong> button.</p><img src="../images/double-vpn-pfsense-8.png" alt="Configure NAT outbound in pfSense">
+            <h3><a id="7-8"></a>7.8. Edit LAN Rules</h3>
+            <p>We will change the rules to allow output from the LAN on our <code>OPT1</code> interface but to block any IPv6 traffic. Navigate to <strong>Firewall</strong> &gt;
+            <strong>Rules</strong>. Go to the <strong>LAN</strong> tab.</p>
+            <p>Edit the existing rule <code>Default allow LAN to any rule</code>.</p>
+            <ol>
+                <li>Change the <strong>Description</strong> to <code>Allow LAN to any rule via OPT1</code>.</li>
+                <li>Display <strong>Advanced Options</strong>.</li>
+                <li>Scroll down <strong>Gateway</strong> and select <code>OPT1_VPNV4</code>.</li>
+                <li>Click <strong>Save</strong>.</li>
+            </ol>
+            <p>Also edit the existing rule <code>Default allow LAN IPv6 to any rule</code>.</p>
+            <ol>
+                <li>Change the <strong>Action</strong> from <strong>Pass</strong> to <strong>Block</strong>.</li>
+                <li>Click <strong>Save</strong>.</li>
+            </ol>
+            <p>Click <strong>Apply Changes</strong>.</p><img src="../images/double-vpn-pfsense-9.png" alt="Firewall LAN rules in pfSense">
+            <h3><a id="7-9"></a>7.9. Complete Set Up</h3>
+            <ol>
+                <li>Shut down the workstation from the XFCE desktop.</li>
+                <li>Back in the pfSense VM console window, halt system by entering <code>6</code> and then <code>y</code> to confirm.</li>
+            </ol>
+            <h2><a id="8"></a>8. End-to-End Test</h2>
+            <ol>
+                <li>On the host PC, connect VPN1. Allow a few seconds for VPN1 to connect. From Firefox on the host, visit <a href="https://ipchicken.com/" target="_blank">IPchicken.com</a>. You should see the VPN1 server IP address.
+                </li>
+                <li>Power on the gateway VM. After the pfSense bootup, there should be three interfaces (<code>WAN</code>, <code>LAN</code>, and <code>OPT1</code>), and you should
+                have an IP address for the <code>OPT1</code> interface.</li>
+                <li>Start the workstation from the live CD.</li>
+                <li>In Firefox on the workstation, test your connection all the way to a website. In particular, visit <a href="https://ipchicken.com/" target="_blank">IPchicken.com</a> or a similar site. You should see the VPN2 server IP address. You are therefore reaching VPN2 through your VPN1 tunnel.
+                </li>
+            </ol>
+            <h2><a id="9"></a>9. Get Help and Report Issues</h2>
+            <p>Here are some avenues for support:</p>
+            <ul>
+                <li>
+                    <a href="https://forum.netgate.com/category/66/pfSense-software" target="_blank">Netgate pfSense forum</a>
+                </li>
+                <li>
+                    <a href="https://www.debian.org/support" target="_blank">Debian support</a>
+                </li>
+                <li>
+                    <a href="https://forums.openvpn.net/" target="_blank">OpenVPN forums</a>
+                </li>
+            </ul>
+            <p><em>Updated 2020-09</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WireGuard + udptunnel</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>WireGuard + udptunnel</h1>
+            <p>WireGuard is a popular new VPN protocol. A known limitation of WireGuard is that it can only use UDP, which may be blocked on some networks. By combining WireGuard
+            with udptunnel, WireGuard can emulate TCP. Note that udptunnel does not support IPv6.</p>
+            <p>In this tutorial, WireGuard and udptunnel are implemented on an Ubuntu Linux server and an Ubuntu Linux client. In the examples, the client is assumed to be at IP
+            address <code>11.11.11.11</code>, and the server is assumed to be at IP address <code>22.22.22.22</code>. We will use port <code>1433/tcp</code> for udptunnel and port
+            <code>51820/udp</code> for WireGuard.</p>
+            <p>We assume that you SSH into the server as <code>root</code>, but that you use a non-root identity with sudo permissions on the client.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Update Server</h3>
+            <p>Before you do anything else, get your server completely up to date:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Configure Firewall</h3>
+            <p>We are going to use port <code>1433/tcp</code> for udptunnel. Although we use port <code>51820/udp</code> for WireGuard, this port should generally be kept closed,
+            as that will better camouflage your server.</p>
+            <p>Here are some sample iptables rules for IPv4. In this example, SSH is confined to a single IP address, which is <code>11.11.11.11</code> in the example. This is the
+            IP address of your workstation Replace <code>11.11.11.11</code> by the actual IP address of your workstation.</p>
+            <blockquote>
+                <code>iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p icmp -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 22 -s 11.11.11.11/32 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 1433 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -P INPUT DROP</code>
+            </blockquote>
+            <p>udp2tunnel does not support IPv6, so there is no need to open any ports there.</p>
+            <blockquote>
+                <code>ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>ip6tables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>ip6tables -A INPUT -p icmpv6 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>ip6tables -P INPUT DROP</code>
+            </blockquote>
+            <p>To persist these rules across reboots, install the package iptables-persistent:</p>
+            <blockquote>
+                <code>apt install iptables-persistent -y</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install WireGuard</h3>
+            <p>Install WireGuard using the script and instructions from <a href="https://github.com/angristan/wireguard-install" target="_blank">https://github.com/angristan/wireguard-install</a>:</p>
+            <blockquote>
+                <code>apt install curl -y</code>
+            </blockquote>
+            <blockquote>
+                <code>curl -O https://raw.githubusercontent.com/angristan/wireguard-install/master/wireguard-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x wireguard-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./wireguard-install.sh</code>
+            </blockquote>
+            <p>You can accept the defaults all the way through the script’s questions, except specify the server’s WireGuard port as <code>51820</code>.</p>
+            <p>When prompted for the name of the first client, call it <code>wgtcp</code>. This causes the script to create a client configuration file named
+            <code>wg0-client-wgtcp.conf</code>. The server configuration is placed in <code>/etc/wireguard/wg0.conf</code>.</p>
+            <h3><a id="1-4"></a>1.4. Install udptunnel</h3>
+            <p>Install the compiler, etc.:</p>
+            <blockquote>
+                <code>apt install build-essential pkg-config zip unzip -y</code>
+            </blockquote>
+            <p>Download the source:</p>
+            <blockquote>
+                <code>wget https://github.com/rfc1036/udptunnel/archive/refs/heads/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <p>Make and install:</p>
+            <blockquote>
+                <code>cd udptunnel-master</code>
+            </blockquote>
+            <blockquote>
+                <code>make</code>
+            </blockquote>
+            <blockquote>
+                <code>make install</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Run udptunnel</h3>
+            <p>To free up the terminal for any other use you may have, we run udptunnel in its own screen session. If you do not already have screen, install it now:</p>
+            <blockquote>
+                <code>apt install screen -y</code>
+            </blockquote>
+            <p>Start a named screen session:</p>
+            <blockquote>
+                <code>screen -S udptunnel</code>
+            </blockquote>
+            <p>Run udptunnel in this screen session:</p>
+            <blockquote>
+                <code>udptunnel --server 0.0.0.0:1433 --verbose 127.0.0.1:51820</code>
+            </blockquote>
+            <p>Detach from the named screen session by pressing <strong>Ctrl</strong>+<strong>a</strong> immediately followed by <strong>d</strong> on your computer keyboard. (You
+            can resume the named screen session at any time with the command <code>screen -r udptunnel</code>.)</p>
+            <p>Exit your SSH session:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Client</h2>
+            <h3><a id="2-1"></a>2.1. Update Client</h3>
+            <p>Before you do anything else, get your client completely up to date:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote>
+            <h3><a id="2-2"></a>2.2. Configure Firewall</h3>
+            <p>We are going to use port <code>1433/tcp</code> for udptunnel. However, all connections will be initiated by the client, so we generally will not need a new firewall
+            rule to open <code>1433/tcp</code> for input.</p>
+            <h3><a id="2-3"></a>2.3. Install udptunnel</h3>
+            <p>Install the compiler, etc.:</p>
+            <blockquote>
+                <code>sudo apt install build-essential pkg-config zip unzip -y</code>
+            </blockquote>
+            <p>Download the source:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/rfc1036/udptunnel/archive/refs/heads/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <p>Make and install:</p>
+            <blockquote>
+                <code>cd udptunnel-master</code>
+            </blockquote>
+            <blockquote>
+                <code>make</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo make install</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4. Run udptunnel</h3>
+            <p>To free up the terminal for any other use you may have, we run udptunnel in its own screen session. If you do not already have screen, install it now:</p>
+            <blockquote>
+                <code>sudo apt install screen -y</code>
+            </blockquote>
+            <p>Start a named screen session:</p>
+            <blockquote>
+                <code>screen -S udptunnel</code>
+            </blockquote>
+            <p>Run udptunnel in this screen session:</p>
+            <blockquote>
+                <code>sudo udptunnel 127.0.0.1:51820 22.22.22.22:1433</code>
+            </blockquote>
+            <p>Replace <code>22.22.22.22</code> in the above command by the actual IP address of your server.</p>
+            <p>Detach from the named screen session by pressing <strong>Ctrl</strong>+<strong>a</strong> immediately followed by <strong>d</strong> on your computer keyboard. (You
+            can resume the named screen session at any time with the command <code>screen -r udptunnel</code>.)</p>
+            <h3><a id="2-5"></a>2.5. Install WireGuard</h3>
+            <p>Install WireGuard on the client:</p>
+            <blockquote>
+                <code>sudo apt install wireguard resolvconf -y</code>
+            </blockquote>
+            <h3><a id="2-6"></a>2.6. Configure WireGuard</h3>
+            <p>Download the configuration file from the server:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>scp root@22.22.22.22:wg0-client-wgtcp.conf .</code>
+            </blockquote>
+            <p>Replace <code>22.22.22.22</code> in the command above by the actual IP address of your server.</p>
+            <p>Copy the configuration file into place:</p>
+            <blockquote>
+                <code>sudo cp wg0-client-wgtcp.conf /etc/wireguard/wg0.conf</code>
+            </blockquote>
+            <p>Edit the WireGuard configuration file:</p>
+            <blockquote>
+                <code>sudo vi /etc/wireguard/wg0.conf</code>
+            </blockquote>
+            <p></p>
+            <p>udptunnel will take care of forwarding packets to the real server IP address. Therefore change the endpoint of the peer to be localhost, which is where udptunnel is
+            listening. Also remove IPv6 addresses, since udptunnel does not support IPv6.</p>
+            <p>Here is a sample client configuration file after these changes:</p>
+            <pre>[Interface]
+PrivateKey = eFtVksTyhrGjkGbvD8aJEtCbBejoTdpfpZj8eVqkaEU=
+Address = 10.66.66.2/32
+DNS = 94.140.14.14,94.140.15.15
+
+[Peer]
+PublicKey = bPsQarHrizq/3WadVipH0kmpAOPS5VOQHR6RyE3pYlk=
+PresharedKey = mCN5BexpDJKTLoCQM8a++DFkpoVWlpyg0HSfB1sY1HY=
+Endpoint = 127.0.0.1:51820
+AllowedIPs = 0.0.0.0/0
+</pre>
+            <p>Write the file to disk. Quit the editor.</p>
+            <h3><a id="2-7"></a>2.7 Add Static Route</h3>
+            <p>Add a static route from the client to the server, so that it does not try to send WireGuard traffic via udptunnel, then udptunnel via WireGuard, in a continuous and
+            never-ending loop. For example, if your default gateway is <code>192.168.1.1</code> and your interface is <code>wlp3s0</code>:</p>
+            <blockquote>
+                <code>sudo ip route add 22.22.22.22 via 192.168.1.1 dev wlp3s0</code>
+            </blockquote>
+            <p>Replace <code>22.22.22.22</code> in the command above by the actual IP address of your server. Replace <code>192.168.1.1</code> and <code>wlp3s0</code> by your
+            actual default gateway. If you do not know your default gateway, you can determine it by issuing the command <code>ip r</code>.</p>
+            <h3><a id="2-8"></a>2.8. Run WireGuard</h3>
+            <blockquote>
+                <code>sudo wg-quick up wg0</code>
+            </blockquote>
+            <p>You can test your connection by visiting <a href="https://whatismyipaddress.com/" target="_blank">https://whatismyipaddress.com</a> in Firefox.</p>
+            <h3><a id="2-9"></a>2.9. Disconnect</h3>
+            <p>Stop WireGuard:</p>
+            <blockquote>
+                <code>sudo wg-quick down wg0</code>
+            </blockquote>
+            <p>Stop udptunnel:</p>
+            <blockquote>
+                <code>screen -r udptunnel</code>
+            </blockquote>
+            <p>Stop udptunnel with <strong>Ctrl</strong>+<strong>c</strong>. Kill the screen session by doing <strong>Ctrl</strong>+<strong>a</strong> followed by
+            <strong>k</strong>, then <strong>y</strong> to confirm.</p>
+            <p>Delete the static route:</p>
+            <blockquote>
+                <code>sudo ip route del 22.22.22.22 via 192.168.1.1 dev wlp3s0</code>
+            </blockquote>
+            <p>Replace <code>22.22.22.22</code> in the command above by the actual IP address of your server. Replace <code>192.168.1.1</code> and <code>wlp3s0</code> by your
+            actual default gateway.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>For WireGuard, the best place to get help is the <code>#wireguard</code> IRC channel on <a href="https://web.libera.chat/#wireguard" target="_blank">libera.chat</a>.</p>
+            <p>udptunnel is a very old program and no longer supported.</p>
+            <p><em>Updated 2022-02-08</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

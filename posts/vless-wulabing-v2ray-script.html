@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VLESS Version of Wulabing V2Ray Script</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>VLESS Version of Wulabing V2Ray Script</h1>
+            <p>VLESS is a simplified protocol for V2Ray that can result in improved performance. VLESS does not depend on the system time being correct. Its authentication method
+            continues to be Universally Unique Id (UUID), but the alterId is not required. The core version of V2Ray needs to be 4.27 or higher to support VLESS.</p>
+            <p>Here’s how to install V2Ray with VLESS using the Wulabing script.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Obtain VPS and Domain Name</h3>
+            <p>First, you’ll need to rent a virtual private server (VPS). In the rest of this article, we’ll write its IP address as <code>zz.zz.zz.zz</code>.</p>
+            <p>Also obtain a domain name. We will give <code>yyyyy.xyz</code> as our example domain name, <code>and www.yyyyy.xyz</code> as our example host name for the V2Ray
+            server.</p>
+            <p></p>Create a DNS <code>A</code> record pointing from hostname <code>www.yyyyy.xyz</code> to the server IP address <code>zz.zz.zz.zz</code>.
+            <p></p>
+            <h3><a id="1-2"></a>1.2. Update Server</h3>
+            <p>Update your server. On CentOS 8:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <p>On Debian 10:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Open Firewall</h3>
+            <p>If you have implemented a firewall on your server, you must open port <code>80</code> and port <code>443</code>. On CentOS 8:</p>
+            <blockquote>
+                <code>firewall-cmd --permanent --zone=public --add-service=http</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --permanent --zone=public --add-service=https</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --reload</code>
+            </blockquote>
+            <p>Debian 10:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport {http, https} counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Download and Run Wulabing Script</h3>
+            <p>Download and run the wulabing script. On CentOS, you may need to do <code>yum install wget</code> before this will work.</p>
+            <blockquote>
+                <code>wget -N --no-check-certificate -q -O install.sh "https://raw.githubusercontent.com/wulabing/V2Ray_ws-tls_bash_onekey/master/install.sh"</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>bash install.sh</code>
+            </blockquote>
+            <p>The script displays a menu offering the following options. This posts adds English translations to the prompts:</p>
+            <blockquote>
+                <code>------------ 安装向导 Setup wizard ------------<br>
+                0. 升级 脚本 Upgrade script<br>
+                1. 安装 Install V2Ray (VLESS+Nginx+ws+tls)<br>
+                2. 安装 Install V2Ray (VLESS+http/2+Fallback)<br>
+                3. 升级 Upgrade V2Ray core<br>
+                ----------- 配置变更 Config changes -----------<br>
+                4. 变更 Change UUID<br>
+                5. 变更 Change alterid<br>
+                6. 变更 Change port<br>
+                7. 变更 Change TLS 版本 version (仅ws+tls有效 only for WS+TLS)<br>
+                ---------- 查看信息 View information ----------<br>
+                8. 查看 实时访问日志 View real-time access log<br>
+                9. 查看 实时错误日志 View real-time error log<br>
+                10. 查看 View V2Ray 配置信息 config information<br>
+                ----------- 其他选项 Other options ------------<br>
+                11. 安装 Install 4合1 bbr 锐速安装脚本 BBR<br>
+                12. 安装 Install MTproxy(支持TLS混淆)<br>
+                13. 证书 有效期更新 Certificate validity update<br>
+                14. 卸载 Uninstall V2Ray<br>
+                15. 更新 Update 证书crontab计划任务 scheduled task<br>
+                16. 清空 证书遗留文件 Clear certificate legacy files<br>
+                17. 退出 Exit<br>
+                <br>
+                请输入数字： Please enter the number:</code>
+            </blockquote>
+            <p>Choose option <code>1</code> to install V2Ray with VLESS + Nginx + WebSocket (WS) + TLS.</p>
+            <p>After doing some checks and installing some packages, the script asks you some more questions.</p>
+            <blockquote>
+                <code>请输入你的域名信息(eg:www.wulabing.com):<br>
+                Please enter your domain information (e.g. www.wulabing.com):</code>
+            </blockquote>
+            <p>Put your accurate domain name for the server, which in our example is <code>www.yyyyy.xyz</code>.</p>
+            <p>The script then checks that the domain name resolves to this server’s IP address.</p>
+            <blockquote>
+                <code>请输入连接端口（default:443）:<br>
+                Please enter the connection port (default 443):</code>
+            </blockquote>
+            <p>Recommend you use the default port <code>443</code>.</p>
+            <p>The script downloads the latest source for Nginx, OpenSSL, and V2Ray. It then compiles everything directly from the source. This takes 10–20 minutes.</p>
+            <blockquote>
+                <code>请选择生成的链接种类<br>
+                Please select the generated link type<br>
+                1: V2RayNG/V2RayN<br>
+                2: quantumult</code>
+            </blockquote>
+            <p>Recommend you choose according to which V2Ray client you will use. We will choose <code>1</code>.</p>
+            <blockquote>
+                <code>请选择支持的 TLS 版本（default:3）:<br>
+                请注意,如果你使用 Quantumult X / 路由器 / 旧版 Shadowrocket / 低于 4.18.1 版本的 V2ray core 请选择 兼容模式<br>
+                Please select a supported TLS version (default 3):<br>
+                Please note that if you use Quantumult X / Router / Legacy Shadowrocket / V2ray core lower than 4.18.1 please select compatibility mode<br>
+                1: TLS1.1 TLS1.2 and TLS1.3（兼容模式）<br>
+                2: TLS1.2 and TLS1.3 (兼容模式)<br>
+                3: TLS1.3 only</code>
+            </blockquote>
+            <p>Recommend you choose option <code>2</code>, TLS 1.2 and TLS 1.3.</p>
+            <p>At the end of the script’s run, it displays the parameters for the client:</p>
+            <blockquote>
+                <code>V2ray 配置信息<br>
+                地址（address）: www.yyyyy.xyz<br>
+                端口（port）： 443<br>
+                用户id（UUID）： c67cf713-7727-4684-9329-58480d705d40<br>
+                加密（encryption）： none<br>
+                传输协议（network）： ws<br>
+                伪装类型（type）： none<br>
+                路径（不要落下/）： /6f9ed9e/<br>
+                底层传输安全： tls</code>
+            </blockquote>
+            <p>If you lose the details, you can redisplay them like this:</p>
+            <blockquote>
+                <code>cat ~/v2ray_info.inf</code>
+            </blockquote>
+            <p>At this point, you can already visit your web server <code>https://www.yyyyy.xyz</code> in a browser to see your camouflage website (3D-Periodic Table of
+            Elements).</p>
+            <h3><a id="1-5"></a>1.5. Optionally Add Site to CDN</h3>
+            <p>To protect your IP address, you can optionally add your site to a Content Delivery Network (CDN) such as <a href="https://www.cloudflare.com/" target="_blank">Cloudflare</a>. If your site is already on Cloudflare, you can enable proxying and SSL at this stage.</p>
+            <h2><a id="2"></a>2. Client</h2>
+            <h3><a id="2-1"></a>2.1. Windows</h3>
+            <p>We will use V2RayN, the graphical user interface for V2Ray on the Windows platform.</p>
+            <p>Open a browser and visit <a href="https://github.com/2dust/v2rayN/releases" target="_blank">GitHub</a>. Download <code>v2rayN-Core.zip</code> for the latest
+            release. Version 3.21 and up support VLESS. After you’ve downloaded <code>v2rayN-Core.zip</code>, unzip the zip file.</p>
+            <p>Double-click <code>v2rayN.exe</code> to launch V2RayN. The first time you run the program, you may get a warning from Windows Defender SmartScreen to say Windows
+            protected your PC. Click <strong>More info</strong>, then click <strong>Run anyway</strong>.</p>
+            <p>The V2RayN icon appears in the system tray toward the bottom right of your Windows desktop. Click the V2RayN icon in the system tray to bring up the V2RayN
+            interface.</p>
+            <p>Under the <strong>Help</strong> button (the question mark icon), select <strong>语言-[中文简体]</strong> for simplified Chinese, or <strong>Language-[English]</strong>
+            for English.</p>
+            <p>Restart V2RayN to see the interface in the new language.</p>
+            <p>Click <strong>Servers</strong> &gt; <strong>Add [VLESS] Server</strong>. Using the values from our example:</p>
+            <ul>
+                <li>Address <code>www.yyyyy.xyz</code></li>
+                <li>Port <code>443</code></li>
+                <li>UUID <code>c67cf713-7727-4684-9329-58480d705d40</code></li>
+                <li>Encryption <code>none</code></li>
+                <li>Transport protocol <code>ws</code></li>
+                <li>Camouflage type <code>none</code></li>
+                <li>Camouflage domain <code>www.yyyyy.xyz</code></li>
+                <li>Path <code>/6f9ed9e/</code></li>
+                <li>TLS <code>tls</code></li>
+                <li>Allow insecure <code>true</code></li>
+            </ul>
+            <p>Click <strong>OK</strong>. Select your chosen server, and press <strong>Enter</strong> to connect to it. After the connection is made, close the V2RayN panel.
+            V2RayN continues to run and is accessible via its icon in the system tray.</p>
+            <p>Now that your V2Ray client is connected to the server, configure your browser to send traffic to the V2Ray client.</p>
+            <p>In Firefox, click the hamburger menu, then select <strong>Options</strong>. Select the <strong>General</strong> tab. Scroll down to the bottom to the heading
+            <strong>Network Settings</strong>. Click the <strong>Settings</strong> button.</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration.</strong></li>
+                <li>Fill in <code>127.0.0.1</code> in SOCKS Host.</li>
+                <li>Fill in <code>10808</code> in the Port. <em>Note that V2RayN uses port 10808 in contrast to the more common port 1080 for the local proxy.</em></li>
+                <li>Select <strong>SOCKS v5.</strong></li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5.</strong></li>
+            </ul>
+            <p>In Chrome, you can do the same thing by installing the SwitchyOmega extension and configuring it to use the SOCKS5 proxy on <code>127.0.0.1</code> port
+            <code>10808</code>.</p>
+            <p>Your browser is now configured to use the V2Ray client and the client is in turn connected to your V2Ray server. Your browsing requests and responses are being
+            passed, totally encrypted, via the remote V2Ray server.</p>
+            <p>Check the end-to-end functionality to confirm that V2RayN and Firefox/Chrome are configured correctly. With V2RayN still running, and Firefox/Chrome proxied, visit
+            <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see the IP address of the server, not your local client.</p>
+            <h3><a id="2-2"></a>2.2. Linux</h3>
+            <p>Open Firefox. Download the latest V2Ray for 64-bit Linux from <a href="https://github.com/v2ray/v2ray-core/releases" target="_blank">GitHub</a>. Version 4.27.0 and
+            up support VLESS. The file to download for a 64-bit PC running Linux is <code>v2ray-linux-64.zip</code>. Unzip <code>v2ray-linux-64.zip</code>.</p>
+            <p>In the terminal or in a text editor, edit the V2Ray configuration file:</p>
+            <blockquote>
+                <code>vi ~/Downloads/v2ray-linux-64/config.json</code>
+            </blockquote>
+            <p>Delete the existing lines. Insert the template below, substituting in your actual values for our examples.</p>
+            <pre>
+{
+  "inbounds": [
+    {
+      "port": 1080,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"]
+      },
+      "settings": {
+        "auth": "noauth",
+        "udp": false
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "www.yyyyy.xyz",
+            "port": 443,
+            "users": [
+              {
+                "id": "c67cf713-7727-4684-9329-58480d705d40",
+                "alterId": 0,
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "www.yyyyy.xyz",
+          "allowInsecure": true
+        },
+        "wsSettings": {
+          "path": "/6f9ed9e/",
+          "headers" : {
+            "host": "www.yyyyy.xyz"
+          }
+        }
+      }
+    }
+  ]
+}
+</pre>
+            <p>Save the file. In your terminal emulator, start the V2Ray client running:</p>
+            <blockquote>
+                <code>cd ~/Downloads/v2ray-linux-64</code>
+            </blockquote>
+            <blockquote>
+                <code>./v2ray -config=config.json</code>
+            </blockquote>
+            <p>Leave the terminal open, with V2Ray running in it.</p>
+            <p>Open Firefox. From the hamburger menu, select <strong>Preferences</strong>. In the <strong>Network Settings</strong> section, click <strong>Settings</strong>. Set
+            the network settings as follows:</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration.</strong></li>
+                <li>Fill in <code>127.0.0.1</code> in SOCKS Host.</li>
+                <li>Fill in <code>1080</code> in the Port.</li>
+                <li>Select <strong>SOCKS v5.</strong></li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5.</strong></li>
+            </ul>
+            <p>Click <strong>OK</strong>. Firefox now sends requests to the V2Ray client, which sends them to the V2Ray server. Do an end-to end test by visiting a site such as
+            <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p>
+            <h3><a id="2-3"></a>2.3. macOS</h3>
+            <p>Download the latest release of Qv2ray from <a href="https://github.com/Qv2ray/Qv2ray/releases" target="_blank">GitHub</a>. The file to download is named
+            <code>Qv2ray-v2.6.3.macOS-x64.dmg</code>.</p>
+            <h3><a id="2-4"></a>2.4. Android</h3>
+            <p>Install V2RayNG from either <a href="https://play.google.com/store/apps/details?id=com.v2ray.ang" target="_blank">Google Play</a> or <a href="https://github.com/2dust/v2rayNG/releases" target="_blank">GitHub</a>. On Android, V2Ray clients act more like VPNs, so there is no need to proxy the browser.</p>
+            <h3><a id="2-5"></a>2.5. iOS</h3>
+            <p>There are no free clients for iOS. Look in the iOS App Store for <a href="https://apps.apple.com/us/app/shadowrocket/id932747118" target="_blank">Shadowrocket</a>.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>Expect an outage every Sunday at 3 a.m. Nginx will automatically restart to coordinate with the renewal of the SSL certificate. During this period, the node cannot
+            be connected to normally. The estimated duration is several seconds to two minutes.</p>
+            <p>If you have any other problems, SSH into your server to take a look at the logs. To view the V2Ray error log, enter the command:</p>
+            <blockquote>
+                <code>tail /var/log/v2ray/error.log</code>
+            </blockquote>
+            <p>To view the Nginx error log, enter the command:</p>
+            <blockquote>
+                <code>tail /etc/nginx/logs/error.log</code>
+            </blockquote>
+            <p>For the Wulabing script:</p>
+            <ul>
+                <li>Telegram support group <a href="https://t.me/wulabing_v2ray" target="_blank">https://t.me/wulabing_v2ray</a>
+                </li>
+                <li>Telegram announcement channel <a href="https://t.me/wulabing_channel" target="_blank">https://t.me/wulabing_channel</a>
+                </li>
+            </ul>
+            <p>If you discover an issue with V2Ray, report it on the official GitHub issues page for the software you are using:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/v2ray/v2ray-core/issues" target="_blank">V2Ray</a>
+                </li>
+                <li>
+                    <a href="https://github.com/2dust/v2rayN/issues" target="_blank">V2RayN</a>
+                </li>
+                <li>
+                    <a href="https://github.com/2dust/v2rayNG/issues" target="_blank">V2RayNG</a>
+                </li>
+                <li>
+                    <a href="https://github.com/Qv2ray/Qv2ray/issues" target="_blank">Qv2ray</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

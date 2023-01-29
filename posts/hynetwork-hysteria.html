@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HyNetwork Hysteria</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>HyNetwork Hysteria</h1>
+            <p>Hysteria is a feature-packed proxy and relay utility optimized for lossy, unstable connections such as satellite networks, congested public WiFi, and connecting
+            from China to servers abroad. It is powered by a customized QUIC (pronounced “quick”) protocol. QUIC is a general-purpose transport layer network protocol initially
+            designed by Jim Roskind at Google. Although its name was initially the acronym for “Quick UDP Internet Connections,” it is now simply the name of the protocol.</p>
+            <p>We give instructions for the example of a Windows client, although clients for other platforms are also available. We use Debian 11 for server. You will need a
+            domain name pointing to your server. Our example is <code>vps.example.com</code>.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Generate Port Number and Password</h3>
+            <p>You will need an unusual port number and a strong password for your Hysteria server. First generate a random port number from the command line of a Linux computer
+            like this:</p>
+            <blockquote>
+                <code>echo $((1024 + $RANDOM))</code>
+            </blockquote>
+            <p>The shell function RANDOM gives you a pseudo-random integer between 0 and 32767, so after evaluating the arithmetical expression, you will end up with a port number
+            between 1024 and 33791. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>4401</code>
+            </blockquote>
+            <p>Also generate a random password from the command line of a Linux computer:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>The <code>openssl rand -base64</code> function gives you a random number, expressed in base-64 notation. Because of the argument <code>24</code>, it will be based
+            on 24 bytes or 192 bits. The result will have 32 base-64 characters. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>Qi0n04pcO38SFROxnIspyE0WRwwMjVEf</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Open Firewall</h3>
+            <p>A server firewall is recommended but optional. There are multiple ways to implement a firewall on a Debian/Ubuntu server: nftables, iptables, ufw, and firewalld. We
+            will use nftables in our examples, but you can use another method if you prefer.</p>
+            <p>SSH into your server as <code>root</code>.</p>
+            <p>Issue each of the following commands in turn to install and start nftables:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>Configure the firewall to accept related traffic and internal traffic on the loopback interface:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <p>Configure the firewall to accept <code>ping</code> requests so that you can test latency:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol icmp icmp type echo-request counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip6 nexthdr icmpv6 icmpv6 type echo-request counter accept</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better. For example, if you always connect to your server from source IP address <code>XX.XX.XX.XX</code>:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 ip saddr XX.XX.XX.XX/32 counter accept</code>
+            </blockquote>
+            <p>If you cannot restrict the port <code>22</code> rule, then you will have to open the port to the whole world instead:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 counter accept</code>
+            </blockquote>
+            <p>Open the server for Hysteria UDP input on your chosen port:</p>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport 4401 counter accept</code>
+            </blockquote>
+            <p>Open the server ports 80 and 443:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport {http, https} counter accept</code>
+            </blockquote>
+            <p>Drop all unexpected input:</p>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Save the rules:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Obtain SSL Certificate</h3>
+            <p>Follow the certbot instructions to obtain an SSL certificate for your server:</p>
+            <blockquote>
+                <code>apt install snapd -y</code>
+            </blockquote>
+            <blockquote>
+                <code>snap install core; snap refresh core</code>
+            </blockquote>
+            <blockquote>
+                <code>snap install --classic certbot</code>
+            </blockquote>
+            <blockquote>
+                <code>ln -s /snap/bin/certbot /usr/bin/certbot</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot certonly --standalone</code>
+            </blockquote>
+            <p>Answer the questions from the certbot script:</p>
+            <ul>
+                <li>Enter your email address (used for urgent renewal and security notices)</li>
+                <li>Agree with the terms of service in order to register with the ACME server (Y)es/(N)o</li>
+                <li>Share your email address with the Electronic Frontier Foundation (Y)es/(N)o</li>
+                <li>Enter the domain name(s) you would like on your certificate (comma and/or space separated) (Enter 'c' to cancel):</li>
+            </ul>
+            <p>On success, certbot stores your certificate and key as follows:</p>
+            <ul>
+                <li>Certificate is saved at <code>/etc/letsencrypt/live/vps.example.com/fullchain.pem</code></li>
+                <li>Key is saved at <code>/etc/letsencrypt/live/vps.example.com/privkey.pem</code></li>
+            </ul>
+            <p>Test automatic renewal:</p>
+            <blockquote>
+                <code>certbot renew --dry-run</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Install Hysteria on Server</h3>
+            <p>Use the provided script to install the components needed for a Hysteria server:</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/HyNetwork/hysteria/master/install_server.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x install_server.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./install_server.sh</code>
+            </blockquote>
+            <p>Hysteria latest version is installed.</p>
+            <h3><a id="1-5"></a>1.5. Configure Server</h3>
+            <p>Edit the sample configuration file:</p>
+            <blockquote>
+                <code>vi /etc/hysteria/config.json</code>
+            </blockquote>
+            <p>Delete the existing contents and insert the template below, changing it as necessary for your port, domain name, and password:</p>
+            <pre>{
+  "listen": ":4401",
+  "cert": "/etc/letsencrypt/live/vps.example.com/fullchain.pem",
+  "key": "/etc/letsencrypt/live/vps.example.com/privkey.pem",
+  "obfs": "xnnIxB3FqDr8mxIDXSNRIa6TotpWgb5m"
+}
+</pre>
+            <p>Write the file to disk and quit the editor.</p>
+            <h3><a id="1-6"></a>1.6. Configure to Run as Root</h3>
+            <p>The easiest way to access the private key of the certificate is just to run Hysteria as root. Edit the systemd service file:</p>
+            <blockquote>
+                <code>vi /lib/systemd/system/hysteria-server.service</code>
+            </blockquote>
+            <p>Change the line:</p>
+            <blockquote>
+                <code>User=root</code>
+            </blockquote>
+            <p>Write the file and quit the editor.</p>
+            <p>Reload the daemon:</p>
+            <blockquote>
+                <code>systemctl daemon-reload</code>
+            </blockquote>
+            <h3><a id="1-7"></a>1.7. Start Hysteria Server</h3>
+            <p>Execute the commands:</p>
+            <blockquote>
+                <code>systemctl enable hysteria-server</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start hysteria-server</code>
+            </blockquote>
+            <p>Check that Hysteria server is active (running):</p>
+            <blockquote>
+                <code>systemctl status hysteria-server</code>
+            </blockquote>
+            <h3><a id="1-8"></a>1.8. Exit SSH on Server</h3>
+            <p>Your work on the server is done, so you can exit your SSH session now:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Client</h2>
+            <h3><a id="2-1"></a>2.1. Download client</h3>
+            <p>You can download pre-built binaries from <a href="https://github.com/HyNetwork/hysteria/releases" target="_blank">https://github.com/HyNetwork/hysteria/releases</a>.</p>
+            <p>We are using Windows as our example client here. Therefore download the latest release of <code>hysteria-tun-windows-6.0-amd64.exe</code>.</p>
+            <h3><a id="2-2"></a>2.2. Configure client</h3>
+            <p>Use Windows Notepad to create a text file. Insert contents based on this model:</p>
+            <pre>{
+  "server": "vps.example.com:4401",
+  "obfs": "xnnIxB3FqDr8mxIDXSNRIa6TotpWgb5m",
+  "up_mbps": 1000,
+  "down_mbps": 1000,
+  "socks5": {
+    "listen": "127.0.0.1:1080"
+  },
+  "http": {
+    "listen": "127.0.0.1:1081"
+  }
+}
+</pre>
+            <p>This configuration enables a SOCKS5 proxy (with both TCP and UDP support) and an HTTP proxy at the same time. There are many other modes in Hysteria. Be sure to
+            check them out in the wiki under Advanced Usage. To enable or disable a mode, simply add or remove its entry in the configuration file.</p>
+            <p>Save the file with name <code>config.json</code> (with no <code>.txt</code> at the end of its name) under the same directory as your client program. By default this
+            would be your <code>Downloads</code> directory.</p>
+            <h3><a id="2-3"></a>2.3. Run Client</h3>
+            <p>To launch the client, open a Command Prompt window and issue the commands:</p>
+            <blockquote>
+                <code>cd Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>hysteria-tun-windows-6.0-amd64.exe client</code>
+            </blockquote>
+            <p>You should see messages like this:</p>
+            <blockquote>
+                <code>[INFO] [config:{Server:vps.example.com:4401 Protocol: Up: UpMbps:1000 Down: DownMbps:1000 Retry:0 RetryInterval:0 SOCKS5:{Listen:127.0.0.1:1080 Timeout:0
+                DisableUDP:false User: Password:} HTTP:{Listen:127.0.0.1:1081 Timeout:0 User: Password: Cert: Key:} TUN:{Name: Timeout:0 Address: Gateway: Mask: DNS:[]
+                Persist:false} TCPRelays:[] TCPRelay:{Listen: Remote: Timeout:0} UDPRelays:[] UDPRelay:{Listen: Remote: Timeout:0} TCPTProxy:{Listen: Timeout:0} UDPTProxy:{Listen:
+                Timeout:0} TCPRedirect:{Listen: Timeout:0} ACL: MMDB: Obfs:xnnIxB3FqDr8mxIDXSNRIa6TotpWgb5m Auth:[] AuthString: ALPN: ServerName: Insecure:false CustomCA:
+                ReceiveWindowConn:0 ReceiveWindow:0 DisableMTUDiscovery:false Resolver: ResolvePreference:}] ←[0mClient configuration loaded</code>
+            </blockquote>
+            <blockquote>
+                <code>[INFO] [addr:vps.example.com:4401] ←[0mConnected</code>
+            </blockquote>
+            <blockquote>
+                <code>[INFO] [addr:127.0.0.1:1081] ←[0mHTTP server up and running</code>
+            </blockquote>
+            <blockquote>
+                <code>[INFO] [addr:127.0.0.1:1080] ←[0mSOCKS5 server up and running</code>
+            </blockquote>
+            <p>Leave the Command Prompt window open with Hysteria client running in it.</p>
+            <h3><a id="2-4"></a>2.4. Set System Proxy</h3>
+            <p>Open <strong>Settings</strong> &gt; <strong>Network & internet</strong> &gt; <strong>Proxy</strong> &gt; <strong>Manual proxy setup</strong>.</p>
+            <ul>
+                <li>Set Use a proxy server to on</li>
+                <li>Set the proxy IP address to <code>http://localhost</code></li>
+                <li>Set the proxy port to <code>1081</code></li>
+            </ul>
+            <p>Click <strong>Save</strong>.</p>
+            <h3><a id="2-5"></a>2.5. Test Browser</h3>
+            <p>Open a browser and try to visit <a href="https://ipchicken.com/" target="_blank">https://ipchicken.com</a>.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>For documentation on Hysteria, consult the <a href="https://github.com/HyNetwork/hysteria/wiki" target="_blank">wiki</a>.</p>
+            <p>Report Hysteria issues on the <a href="https://github.com/HyNetwork/hysteria/issues" target="_blank">GitHub issues page</a>.</p>
+            <p><em>Updated 2022-07-06</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

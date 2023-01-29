@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IPsec with Libreswan</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>IPsec with Libreswan</h1>
+            <p>Libreswan is a free software implementation of the most widely supported and standardized VPN protocol, IPsec.</p>
+            <p>On Android, the arrangement in this particular tutorial is called “IPsec XAUTH PSK.” On iOS, it is called simply “IPsec.”</p>
+            <p>IPsec uses fixed port numbers and is therefore easily blocked by censors. Nevertheless, there may be situations where ease-of-use is your top priority. Many client
+            devices support IPsec without the installation of additional software.</p>
+            <p>This article shows you how to create an IPsec server on CentOS 8. Note that CentOS 8 goes end-of-life on December 31, 2021. For this reason, we include appendices
+            discussing Debian/Ubuntu.</p>
+            <p>In the examples, your workstation is at IP address <code>xx.xx.xx.xx</code>, and the server is at IP address <code>yy.yy.yy.yy</code>. Wherever you see these values
+            in the examples, you will need to change them to match your actual IP addresses. If you do not know your workstation’s IP address, you can determine it by opening a
+            browser and visiting <a href="https://www.ipchicken.com/" target="_blank">IPchicken.com</a>.</p>
+            <p>We also give instructions for a sample mobile client. Mobile devices are easily tracked and strongly linked to an individual. Again, we assume in this scenario that
+            ease-of-use is your main concern and that you are in a country where IPsec is not blocked.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Install and Configure Firewall</h3>
+            <p>We begin by installing a firewall and configuring it to accept IPsec. We also masquerade outgoing IP addresses. Issue the commands that follow:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install firewalld -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-service=ipsec</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-masquerade</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <p>For better security, restrict port 22 access to trusted IP addresses only. For example, if you always log in from IP address <code>xx.xx.xx.xx</code>, make that the
+            only IP address that will be trusted for SSH access:</p>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-source=xx.xx.xx.xx/32</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=cockpit</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Allow Forwarding</h3>
+            <p>Now enable packet forwarding in the Linux kernel. Create a new configuration file in <code>/usr/lib/sysctl.d</code>:</p>
+            <blockquote>
+                <code>vi /usr/lib/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <p>Insert a single line:</p>
+            <blockquote>
+                <code>net.ipv4.ip_forward=1</code>
+            </blockquote>
+            <p>Save the file. Make this change effective immediately.:</p>
+            <blockquote>
+                <code>sysctl -p /usr/lib/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install Package</h3>
+            <p>Install Libreswan from the repository:</p>
+            <blockquote>
+                <code>yum install libreswan -y</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Set Up Preshared Key</h3>
+            <p>Edit the IPsec secrets file:</p>
+            <blockquote>
+                <code>vi /etc/ipsec.d/psk.secrets</code>
+            </blockquote>
+            <p>Insert a line with your preshared key. We will use as an example a preshared key of <code>ArnieBooksCello</code>:</p>
+            <blockquote>
+                <code>%any: PSK "ArnieBooksCello"</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="1-5"></a>1.5. Set Up Usernames and Passwords</h3>
+            <p>Suppose we have three users, <code>alice</code>, <code>bob</code>, and <code>carol</code>. Their passwords are <code>Apple123</code>, <code>Bravo456</code>, and
+            <code>Caper789</code> respectively.</p>
+            <p>Compute the SHA512 hash of the first password:</p>
+            <blockquote>
+                <code>openssl passwd -6 Apple123</code>
+            </blockquote>
+            <p>The result is displayed as <code>$6$/X60NLa1wFgWDYIC$PYsPW.lsCALxSgRi0NmKcLVJPY.tPZwRZIs9OoYy3o/KimObc9GKkVfkpzhaA/jxM15eW.F6AcFqYdElsuJoO.</code>.</p>
+            <p>Compute the SHA512 hash of the second password:</p>
+            <blockquote>
+                <code>openssl passwd -6 Bravo456</code>
+            </blockquote>
+            <p>The result is displayed as <code>$6$U7Z3b.871AFnz6M8$lUB18T5gwQS/yPxjPqeNbUNCWpDsCHxmRNZy6dURpEc6cteX8NwBSB4HboNMTer/a642XadEv.T3ses8c33Y3/</code>.</p>
+            <p>Compute the SHA512 hash of the third password:</p>
+            <blockquote>
+                <code>openssl passwd -6 Caper789</code>
+            </blockquote>
+            <p>The result is displayed as <code>$6$hbiPDOhJPoEBpAN2$IsKhAZvKLMuuICDafbkW5STmsBhC7HuWNZwmJ/l2z7CzcQbZNoie5i0ye5Lpusz43JEbhQR9.jR6In1yWyw1N0</code>.</p>
+            <p>Create a password file:</p>
+            <blockquote>
+                <code>vi /etc/ipsec.d/passwd</code>
+            </blockquote>
+            <p>Insert usernames and passwords like this:</p>
+            <pre>alice:$6$/X60NLa1wFgWDYIC$PYsPW.lsCALxSgRi0NmKcLVJPY.tPZwRZIs9OoYy3o/KimObc9GKkVfkpzhaA/jxM15eW.F6AcFqYdElsuJoO.:xauth-psk
+bob:$6$U7Z3b.871AFnz6M8$lUB18T5gwQS/yPxjPqeNbUNCWpDsCHxmRNZy6dURpEc6cteX8NwBSB4HboNMTer/a642XadEv.T3ses8c33Y3/:xauth-psk
+carol:$6$hbiPDOhJPoEBpAN2$IsKhAZvKLMuuICDafbkW5STmsBhC7HuWNZwmJ/l2z7CzcQbZNoie5i0ye5Lpusz43JEbhQR9.jR6In1yWyw1N0:xauth-psk
+</pre>
+            <p>Save the file.</p>
+            <h3><a id="1-6"></a>1.6. Configure Libreswan</h3>
+            <p>Create a new file for IPsec connections with a preshared key:</p>
+            <blockquote>
+                <code>vi /etc/ipsec.d/ipsec.conf</code>
+            </blockquote>
+            <p>Insert lines specifying a configuration like this:</p>
+            <pre>config setup
+    protostack=netkey
+    virtual_private=%v4:10.0.0.0/8,%v4:192.168.0.0/16,%v4:172.16.0.0/12
+    uniqueids=no
+
+conn xauth-psk
+    authby=secret
+    pfs=no
+    auto=add
+    rekey=no
+    left=%defaultroute
+    leftsubnet=0.0.0.0/0
+    rightaddresspool=10.0.8.64-10.0.8.127
+    right=%any
+    cisco-unity=yes
+    modecfgdns=8.8.8.8
+    leftxauthserver=yes
+    rightxauthclient=yes
+    leftmodecfgserver=yes
+    rightmodecfgclient=yes
+    modecfgpull=yes
+    xauthby=file
+    ike-frag=yes
+    ikev2=no
+    ike=aes256-sha1-modp1024,aes128-sha1-modp1024,3des-sha1-modp1024
+    esp=aes256-sha2_512,aes256-sha1,aes256-sha2_256,3des-sha1
+</pre>
+            <p>Save the file.</p>
+            <h3><a id="1-7"></a>1.7. Start Libreswan</h3>
+            <p>Start Libreswan after every reboot, and also start it now:</p>
+            <blockquote>
+                <code>systemctl enable ipsec</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start ipsec</code>
+            </blockquote>
+            <h3><a id="1-8"></a>1.8. Check Libreswan</h3>
+            <p>Check that Libreswan is active and running:</p>
+            <blockquote>
+                <code>systemctl status ipsec</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Android Client</h2>
+            <p>The place where you add a VPN in Android varies from release to release. It may be under <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt;
+            <strong>Advanced</strong> &gt; <strong>VPN</strong> or it may be under <strong>Settings</strong> &gt; <strong>Connections</strong> &gt; <strong>More networks</strong>
+            &gt; <strong>VPN</strong>.</p>
+            <p>Add a new VPN:</p>
+            <ul>
+                <li>Name is whatever you want, e.g. <code>yy.yy.yy.yy</code></li>
+                <li>Type is <strong>IPsec XAUTH PSK</strong></li>
+                <li>Server address in our example is <code>yy.yy.yy.yy</code></li>
+                <li>IPsec identifier is blank</li>
+                <li>IPsec pre-shared key is <code>ArnieBooksCello</code> in our example</li>
+                <li>Username is <code>alice</code></li>
+                <li>Password is <code>Apple123</code></li>
+            </ul>
+            <p>Click <strong>Save</strong>. Select the VPN, and click <strong>Connect</strong>.</p>
+            <h2><a id="3"></a>3. iOS Client</h2>
+            <p>Go to <strong>Settings</strong> &gt; <strong>General</strong> &gt; <strong>VPN</strong>.</p>
+            <p>Add a new VPN configurration:</p>
+            <ul>
+                <li>Type is <strong>IPsec</strong></li>
+                <li>Description is whatever you want, e.g. <code>yy.yy.yy.yy</code></li>
+                <li>Server in our example is <code>yy.yy.yy.yy</code></li>
+                <li>Account is <code>alice</code></li>
+                <li>Password is <code>Apple123</code></li>
+                <li>Use Certificate is off</li>
+                <li>Group Name is blank</li>
+                <li>Secret is <code>ArnieBooksCello</code> in our example</li>
+            </ul>
+            <p>Click <strong>Done</strong>. Select the VPN, and toggle it to the ON position.</p>
+            <h2><a id="4"></a>4. Get Help and Report Issues</h2>
+            <p>Examine the logs with:</p>
+            <blockquote>
+                <code>grep pluto /var/log/secure</code>
+            </blockquote>
+            <p>For your client device in general, seek support through the normal channels for that device.</p>
+            <p>For Libreswan, support arrangements are listed in the <a href="https://libreswan.org/wiki/Support" target="_blank">Libreswan wiki</a>.</p>
+            <h2><a id="a"></a>Appendix A. Notes for Debian/Ubuntu</h2>
+            <h3><a id="a-1"></a>Appendix A.1. Nftables Firewall for Debian/Ubuntu</h3>
+            <p>A firewall for IPsec may be built with <code>nftables</code> as follows, with <code>xx.xx.xx.xx</code> representing your workstation’s IP address.</p>
+            <p>Install <code>nftables</code>:</p>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>Set up the basic rules:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol icmp icmp type echo-request counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip6 nexthdr icmpv6 icmpv6 type echo-request counter accept</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better.</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 ip saddr xx.xx.xx.xx/32 counter accept</code>
+            </blockquote>
+            <p>Open ports <code>500/udp</code> and <code>4500/udp</code> and protocols <code>50</code> and <code>51</code> for IPsec:</p>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport 500 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport 4500 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol ah counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol esp counter accept</code>
+            </blockquote>
+            <p>Drop all unexpected input:</p>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Masquerade outgoing IP addresses:</p>
+            <blockquote>
+                <code>nft add table nat</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat prerouting { type nat hook prerouting priority 0 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat postrouting { type nat hook postrouting priority 100 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule nat postrouting ip saddr 10.0.8.64/26 masquerade</code>
+            </blockquote>
+            <p>Save all these rules so that they persist across reboots:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="a-2"></a>Appendix A.2. Allow Forwarding on Debian/Ubuntu</h3>
+            <p>On Debian/Ubuntu you create your <code>sysctl</code> configuration file in <code>/etc/sysctl.d</code>:</p>
+            <blockquote>
+                <code>vi /etc/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <p>Insert a single line:</p>
+            <blockquote>
+                <code>net.ipv4.ip_forward=1</code>
+            </blockquote>
+            <p>Save the file. Make this change effective immediately.:</p>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <h3><a id="a-3"></a>Appendix A.3. MODP1024 on Debian/Ubuntu</h3>
+            <p>Libreswan version 3.30 (February 13, 2020) disabled support for DH2/modp1024 at compile time. Ubuntu 20.04 was the last release to include Libreswan 3.29; Debian 10
+            “buster” included Libreswan 3.27.</p>
+            <p>The problem is that some Windows and Android devices still require modp1024 to work.</p>
+            <p>On Ubuntu 20.10+ and Debian 11+ your choices are therefore:</p>
+            <ul>
+                <li>Compile Libreswan 3.29 from source; or</li>
+                <li>Compile a more recent Libreswan from source defining <code>USE_DH2</code> at compile time</li>
+            </ul>
+            <p>A sample compile procedure for Libreswan on Debian/Ubuntu is as follows.</p>
+            <p>Install the prerequisites for the compile:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install -y libnss3-dev libnspr4-dev pkg-config libpam-dev libcap-ng-dev libcap-ng-utils libselinux-dev libcurl3-nss-dev flex bison gcc make libldns-dev
+                libunbound-dev libnss3-tools libevent-dev xmlto libsystemd-dev</code>
+            </blockquote>
+            <p>Visit <a href="https://download.libreswan.org/" target="_blank">https://download.libreswan.org</a> to determine which release you want to use. We will use release
+            4.4 as our example. Download the source tarball.</p>
+            <blockquote>
+                <code>wget https://download.libreswan.org/libreswan-4.4.tar.gz</code>
+            </blockquote>
+            <p>Extract the tarball:</p>
+            <blockquote>
+                <code>tar -xf libreswan-4.4.tar.gz</code>
+            </blockquote>
+            <p>Change into the top-level directory for the source:</p>
+            <blockquote>
+                <code>cd libreswan-4.4</code>
+            </blockquote>
+            <p>Build Libreswan with <code>USE_DH2</code> defined:</p>
+            <blockquote>
+                <code>make CFLAGS="-DUSE_DH2"</code>
+            </blockquote>
+            <p>Install Libreswan:</p>
+            <blockquote>
+                <code>make install</code>
+            </blockquote>
+            <p>If you are going to use the certificate utility <code>certutil</code>, then initialize the Network Security Services (NSS) database:</p>
+            <blockquote>
+                <code>ipsec initnss</code>
+            </blockquote>
+            <p>The NSS database is created in <code>/var/lib/ipsec/nss</code>.</p>
+            <p>Configure your server’s firewall as described in appendix A.1 above to accept protocol <code>50</code>, protocol <code>51</code>, input <code>500/udp</code> and
+            <code>4500/udp</code>, and also to masquerade the IP address on outbound packets.</p>
+            <p>Allow forwarding in the Linux kernel as in described in appendix A.2 above.</p>
+            <p>Set up your parameter files in the <code>/etc/ipsec.d</code> directory, as explained in the sections for CentOS 8, except that in
+            <code>/etc/ipsec.d/ipsec.conf</code> the parameter <code>ike-frag=yes</code> has now been replaced by <code>fragmentation=yes</code>:</p>
+            <ul>
+                <li>Set up your secrets file as described in section 1.4 above, for example in <code>/etc/ipsec.d/psk.secrets</code></li>
+                <li>Set up your password file as described in section 1.5 above, for example <code>/etc/ipsec.d/passwd</code></li>
+                <li>Set up your secretsConfiguration file as described in section 1.6 above, for example in <code>/etc/ipsec.d/ipsec.conf</code></li>
+            </ul>
+            <p>Once you’ve set everything up, start Libreswan:</p>
+            <blockquote>
+                <code>systemctl start ipsec</code>
+            </blockquote>
+            <h3><a id="a-4"></a>Appendix A.4. Libreswan Log on Debian/Ubuntu</h3>
+            <p>On Debian/Ubuntu, examine the logs with:</p>
+            <blockquote>
+                <code>grep pluto /var/log/auth.log</code>
+            </blockquote>
+            <p><em>Updated 2021-06-17</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

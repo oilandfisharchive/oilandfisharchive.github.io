@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Introduction to Tor Browser</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Introduction to Tor Browser</h1>
+            <p>Tor Browser is <a href="tor-not-free-countries.html">used in not-free countries</a> to circumvent censorship. The Tor network architecture — triple relays and
+            triple encryption — also provides some privacy.</p>
+            <p>The combination of censorship circumvention and privacy attracts negative attention from governments. Many countries block the Tor protocol, Tor servers, and even
+            the Tor Project website. However, techniques have been developed to work around these blocks.</p>
+            <p>This article will introduce you to Tor Browser. Wherever possible, it takes into account the needs of users behind government firewalls.</p>
+            <p>This article is mainly for users of the Tor Browser on their regular operating system. Parts of it will also apply to users of Tails or <a href="practical-anonymity-political-religious-dissidents.html">Whonix.
+<p></p>
+<h2></h2></a><a id="1"></a>1. Download Tor Browser</p>
+            <h3><a id="1-1"></a>1.1. Download</h3>
+            <p>First you need to download the Tor Browser installer. Official installers are available for Windows, macOS, Linux, and Android.</p>
+            <p>If you can reach the official Tor Project website, you can download Tor Browser from the <a href="https://www.torproject.org/download" target="_blank">download page</a>. Windows, macOS, and Linux installers are also available in 32 languages from the <a href="https://www.torproject.org/download/languages" target="_blank">download languages page</a>. The installers vary in size from around 70 to 80 MB.</p>
+            <p></p>
+            <p>If you cannot reach the Tor Project website, the GetTor service can help. Send an email to <a href="mailto:gettor@torproject.org">gettor@torproject.org</a>. It will
+            automatically respond with alternative download links. At least one of the alternative hosting providers should be accessible in each country.</p>
+            <p>Due to iOS technical limitations, there is no official Tor Browser for iOS. There is, though, an unofficial app named <a href="https://onionbrowser.com/" target="_blank">Onion Browser</a> for iOS.</p>
+            <p>Do not run the installer just yet. We have some preparatory work to do.</p>
+            <h3><a id="1-2"></a>1.2. Optionally Verify Download on Linux</h3>
+            <p>If you are on Linux, you can optionally verify your Tor browser download as follows.</p>
+            <p>Firstly, when you download the Tor Browser installer, also download the signature file that goes with your Tor Browser installer. It has a name that matches the
+            main download, except that it ends in <code>.asc</code>.</p>
+            <p>Automatically locate the Tor Browser signing key:</p>
+            <blockquote>
+                <code>gpg --auto-key-locate nodefault,wkd --locate-keys <span class="__cf_email__" data-cfemail=
+                "9ce8f3eefeeef3ebeff9eedce8f3eeeceef3f6f9ffe8b2f3eefb">[email&nbsp;protected]</span></code>
+            </blockquote>
+            <p>The results should mention the key <code>4E2C6E8793298290</code> along with a message, <code>public key "Tor Browser Developers (signing key) &lt;<span class=
+            "__cf_email__" data-cfemail="6f1b001d0d1d00181c0a1d2f1b001d1f1d00050a0c1b41001d08">[email&nbsp;protected]</span>&gt;" imported</code>. Export this key to a keyring
+            file:</p>
+            <blockquote>
+                <code>gpg --output ./tor.keyring --export 0xEF6E286DDA85EA2A4BA7DE684E2C6E8793298290</code>
+            </blockquote>
+            <p>Now verify, using the keyring file you just created, the signature of the download:</p>
+            <blockquote>
+                <code>gpgv --keyring ./tor.keyring tor-browser-linux64-10.0_en-US.tar.xz.asc tor-browser-linux64-10.0_en-US.tar.xz</code>
+            </blockquote>
+            <p>You should see a message, <code>Good signature from "Tor Browser Developers (signing key) &lt;<span class="__cf_email__" data-cfemail=
+            "52263d2030203d2521372012263d2022203d383731267c3d2035">[email&nbsp;protected]</span>&gt;"</code>.</p>
+            <h2><a id="2"></a>2. Get Tor Bridges</h2>
+            <h3><a id="2-1"></a>2.1. Need for Bridges</h3>
+            <p>Many countries block the IP addresses of Tor relays or use deep packet inspection (DPI) to detect and block the Tor protocol.</p>
+            <p>If your country is one of the ones that blocks direct connections to the Tor network, you may need to use a bridge. Bridges can obfuscate Tor network traffic,
+            making it more difficult for censors to detect.</p>
+            <h3><a id="2-2"></a>2.2. Types of Bridges</h3>
+            <p>There are three main types of Tor bridge:</p>
+            <ul>
+                <li>
+                    <strong>Obfs4</strong> bridges work in most countries. They may be public or private.
+                    <ul>
+                        <li>Public bridges can either be built-in to the Tor Browser, or obtained from the public bridge database (BridgeDB).</li>
+                        <li>Private bridges are ones you or a friend create and choose not list in BridgeDB.</li>
+                    </ul>
+                </li>
+                <li><strong>Meek-azure</strong> uses a completely different obfuscation technique called domain-fronting. Meek-azure is slow but works in China.</li>
+                <li><strong>Snowflake</strong> is a new type of bridge, available in some versions of Tor Browser.</li>
+            </ul>
+            <h3><a id="2-3"></a>2.3. Bridge Lines</h3>
+            <p>The most common type of bridges, obfs4, are defined to the Tor Browser by bridge lines. A bridge line looks like this:</p>
+            <blockquote>
+                <code>Bridge obfs4 11.11.11.11:2222 B6740861AE06B247f55CB63EA347E248F72CCE08 cert=YjY3NDA4NjFhZTA2YjI0N2Y1NWNiNjNlYTM0N2UyNDhmNzJjY2UwODMzOTg2NGM3N2NjMW
+                iat-mode=0</code>
+            </blockquote>
+            <p>The above is a completely fabricated example and not a real bridge line. <code>11.11.11.11</code> represents an IP address, <code>2222</code> represents a port
+            number, and <code>B6740861AE06B247f55CB63EA347E248F72CCE08</code> is a made-up fingerprint.</p>
+            <h3><a id="2-4"></a>2.4. Get Bridges</h3>
+            <p>Tor Browser comes with a dozen or so built-in obfs4 bridges. In countries that block Tor IP addresses, you may need to obtain additional obfs4 bridges.</p>
+            <ul>
+                <li>You can get more bridges from the <a href="https://bridges.torproject.org/options" target="_blank">official Tor Project site</a>. Unobfuscated bridges, also
+                known as vanilla bridges, may work in some environments. If you want these, click <strong>Just give me bridges</strong> on that page. Otherwise, scroll down to
+                <strong>Advanced Options</strong>, select <strong>obfs4</strong>, and click <strong>Get Bridges</strong>.
+                </li>
+                <li>You can also get more bridges by email. From a Gmail account, send an email to <a href="mailto:bridges@torproject.org">bridges@torproject.org</a>. Leave the
+                email subject empty, and write <code>get transport obfs4</code> in the email’s message body.
+                </li>
+                <li>From within Tor Browser. See <strong>Request a bridge from torproject.org</strong> in <a href="#4-2">section 4.2</a>.
+                </li>
+                <li>There is an unofficial Telegram channel for bridge distribution at <a href="https://t.me/tor_bridges" target="_blank">t.me/tor_bridges</a>.
+                </li>
+            </ul>
+            <h3><a id="2-5"></a>2.5. Test Bridge Reachability</h3>
+            <p>Before you try to use your bridges, you may want to test their reachability. You can attempt to <code>ping</code> the bridge IP address. Using our sample bridge
+            line from above, the command would be:</p>
+            <blockquote>
+                <code>ping 11.11.11.11</code>
+            </blockquote>
+            <p>This method is not guaranteed to be accurate, since reachability by ICMP and reachability by TCP are two separate things, especially if you are faced with a
+            sophisticated firewall. In any case, the node may have deliberately blocked ICMP requests.</p>
+            <p>The other thing you can do is to look up the bridge on the <a href="https://metrics.torproject.org/rs.html" target="_blank">Tor Project relay search page</a>. To
+            maintain the secrecy of bridge IP addresses, you cannot search by IP address. However, you can enter the 40-digit fingerprint. This comes after the bridge IP address
+            and port in the bridge line. Using the same example of a bridge line, the fingerprint to search for would be:</p>
+            <blockquote>
+                <code>B6740861AE06B247f55CB63EA347E248F72CCE08</code>
+            </blockquote>
+            <p>This is a made-up fingerprint, so do not actually try to search for this example.</p>
+            <h2><a id="3"></a>3. Install Tor Browser</h2>
+            <p>At this point, you have the Tor Browser installer and, if necessary, a list of reachable bridges. Now you are ready to install Tor Browser.</p>
+            <p>On Windows, macOS, and Android, just follow the normal procedure to install an app on your platform. On Linux, open a terminal window and issue these commands:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>ls</code>
+            </blockquote>
+            <p>You should see your downloaded installer. It will have a name that looks like <code>tor-browser-linux64-10.0_en-US.tar.xz</code>. The version number and language
+            may be different when you try this.</p>
+            <p>In recent versions of Linux, you should be able to extract Tor Browser directly from the <code>xz</code> file:</p>
+            <blockquote>
+                <code>tar -xf tor-browser-linux64-10.0_en-US.tar.xz</code>
+            </blockquote>
+            <p>Change into the extracted directory:</p>
+            <blockquote>
+                <code>cd tor-browser_en-US</code>
+            </blockquote>
+            <p>Register the Tor Browser app:</p>
+            <blockquote>
+                <code>./start-tor-browser.desktop --register-app</code>
+            </blockquote>
+            <p>Close your terminal. Assuming you are using a Linux distribution that comes with GNOME desktop, click <strong>Activities</strong>, and search for Tor Browser. Click
+            the icon to launch Tor Browser.</p>
+            <p>Once you have launched Tor Browser, you can if you wish click <strong>Activities</strong> again, right-click on the Tor Browser icon in the dash, and select
+            <strong>Add to Favorites</strong> so that it stays in the dash permanently.</p><img src="../images/tor-browser-1.png" alt=
+            "Adding Tor Browser to Favorites in GNOME dash on Linux">
+            <h2><a id="4"></a>4. Connect or Configure</h2>
+            <h3><a id="4-1"></a>4.1. Direct Connection</h3>
+            <p>The first time you launch Tor Browser on a desktop or laptop computer, you are presented with an initial screen. This offers you the option to connect directly to
+            the Tor network, or to configure Tor Browser before you connect.</p>
+            <p>If Tor is not blocked in your country, you can just click <strong>Connect</strong>. A status bar appears, showing Tor’s connection progress. You can skip the rest
+            of this section.</p>
+            <p>If Tor is blocked, you must click <strong>Configure</strong>. That will take you to further options.</p>
+            <h3><a id="4-2"></a>4.2. If Tor is Censored in Your Country</h3>
+            <p>On the <strong>Settings</strong> &gt; <strong>Connection</strong> screen, under <strong>Bridges</strong>, you will see three choices:</p>
+            <ul>
+                <li><strong>Choose from one of Tor Browser’s built-in bridges</strong>. This is where you can use a built-in bridge of type obfs4, meek-azure, or snowflake if
+                available.</li>
+                <li><strong>Request a bridge from torproject.org</strong>. This option is another way to get bridge lines. It uses domain fronting so should be accessible in most
+                countries. This bridge distribution mechanism is also referred to as Moat.</li>
+                <li><strong>Enter a bridge address you already know</strong>. Select this option if you have already obtained some bridges, either public ones from BridgeDB or
+                private ones you or a friend set up.</li>
+            </ul><img src="../images/tor-browser-2.png" alt="Choose the way a bridge will be provided">
+            <h3><a id="4-3"></a>4.3. If You Use a Proxy to Connect to the Internet</h3>
+            <p>Under <strong>Advanced</strong>, on the line <strong>Configure how Tor Browser connects to the internet</strong>, click the <strong>Settings</strong> button.</p>
+            <p>Check the box saying you use a proxy to connect to the Internet. You can then specify a pre-proxy. For example, you may have <a href="shadowsocks-libev.html">Shadowsocks</a> or <a href="v2ray.html">V2Ray</a> configured to listen on localhost port 1080.</p><img src="../images/tor-browser-3.png" alt=
+            "I use a proxy to connect to the Internet">
+            <p>If you do not need a proxy to connect to the Internet, then leave this box unchecked.</p>
+            <h3><a id="4-4"></a>4.4. Connect</h3>
+            <p>Once you have set up all the options you need, click <strong>Connect</strong>. A status bar appears, showing Tor’s connection progress.</p><img src=
+            "../images/tor-browser-4.png" alt="Tor Browser connecting to the Tor network">
+            <p>If there is a problem and you need to look at the Tor logs, go to <strong>Settings</strong> &gt; <strong>Connection</strong> &gt; <strong>Advanced</strong>. Click
+            <strong>View Logs</strong>. The log may or may not be informative. After copying the log to the clipboard, paste the log into a text editor such as Windows Notepad or
+            Linux Gedit.</p>
+            <h3><a id="4-5"></a>4.5. Connection Assist</h3>
+            <p>A new feature automates the process of getting bridges and connecting to the Tor network. It is now present in the production Tor Browser.</p>
+            <p>Connection Assist tries to detect whether or not Tor is blocked in your location. This may take a couple of minutes. The feature will then attempt to automatically
+            find a working means of connecting. This may take another couple of minutes.</p>
+            <p>Connection Assist works by looking up and downloading an up-to-date list of country-specific options to try using your location (with your consent). It manages to
+            do so without needing to connect to the Tor Network by utilizing “moat” — the same domain-fronting tool that Tor Browser uses to request a bridge from the Tor Project
+            website.</p>
+            <h2><a id="5"></a>5. Guided Tour of Tor Browser</h2>
+            <h3><a id="5-1"></a>5.1. Letterboxing</h3>
+            <p>The first thing you may notice after you connect is that the display size has been rounded to nearest 100 pixels horizontally and vertically. Letterboxing appears
+            around the margins of the display. This is designed to protect your anonymity by making you look like many other users.</p>
+            <p>The usual advice is not to maximize your browser window, as this could give away your monitor size. This may apply less nowadays, since many people have common
+            monitor sizes. In any case, your main concern may be bypassing censorship rather than complete anonymity and blending in with the crowd.</p>
+            <h3><a id="5-2"></a>5.2. Check Connection</h3>
+            <p>Check your connection to the Tor network by visiting <a href="https://check.torproject.org/" target="_blank">check.torproject.org</a>. You should see a headline:
+            <code>Congratulations. This browser is configured to use Tor.</code></p>
+            <h3><a id="5-3"></a>5.3. Display Circuit Information</h3>
+            <p>Click the padlock icon to display the Tor circuit by which you reached this site.</p><img src="../images/tor-browser-5.png" alt=
+            "Displaying Tor circuit information in Tor Browser">
+            <p>At the bottom of the circuit information panel is a button, <strong>New Circuit for this Site</strong>. Pressing this button will give you a new Tor circuit to
+            reach the current site, including a new exit node. This can be useful if a particular website blocks the Tor exit node you were using.</p>
+            <h3><a id="5-4"></a>5.4. Display Security Level</h3>
+            <p>Click the shield icon to see your current security level.</p><img src="../images/tor-browser-6.png" alt="Displaying Tor Browser security level">
+            <p>If you want to change your security level, click <strong>Change</strong>. You can select from three levels:</p>
+            <ul>
+                <li><strong>Standard</strong>. All features, including JavaScript, are enabled.</li>
+                <li><strong>Safer</strong>. JavaScript is enabled only for HTTPS sites. Some fonts and math symbols are disabled. Audio and video are click-to-play.</li>
+                <li><strong>Safest</strong>. JavaScript is disabled on all sites. Some fonts, icons, math symbols, and images are disabled. Audio and video are click-to-play.</li>
+            </ul>
+            <h3><a id="5-5"></a>5.5. Display Add-ons</h3>
+            <p>Click the hamburger menu, then select <strong>Add-ons and themes</strong>. You will see the Tor Browser comes with <strong>NoScript</strong>. This allows JavaScript
+            only from trusted domains.</p>
+            <h3><a id="5-6"></a>5.6. Customize Tor Browser</h3>
+            <p>The icon for NoScript does not appear in your browser by default. To see it, you must customize the browser.</p>
+            <p>Click the hamburger menu, then <strong>More Tools</strong>, then <strong>Customize toolbar</strong>. Drag the icon for NoScript into the toolbar.</p><img src=
+            "../images/tor-browser-7.png" alt="NoScript icon in Tor Browser toolbar">
+            <p>When you have finished customizing, close the <strong>Customize Tor Browser</strong> tab.</p>
+            <h3><a id="5-7"></a>5.7. Reset Identity</h3>
+            <p>Click the paintbrush icon to reset your identity. All open tabs and windows will be closed. All private information, such as cookies and browsing history, will be
+            cleared. New Tor circuits will be built. This makes you look like a completely new user.</p>
+            <h3><a id="5-8"></a>5.8. Reconfigure Network Settings</h3>
+            <p>When you started Tor Browser for the first time, you made some choices about bridges and a proxy server. You can change these settings at any time. Click the
+            hamburger icon, select <strong>Settings</strong>, then select the <strong>Connection</strong> tab. Alternatively, you can directly put
+            <code>about:preferences#connection</code> in the URL box.</p><img src="../images/tor-browser-8.png" alt="Tor Browser preferences for Tor settings">
+            <h2><a id="6"></a>6. Disable JavaScript</h2>
+            <p>JavaScript can be used to extract information about your computer and to trick you into installing malware. For this reason, some users like to disable JavaScript.
+            If you do this, you will see that some sites do not render without JavaScript. You will have to make some personal choices as to how much JavaScript you will allow. By
+            default, Tor Browser allows JavaScript everywhere. This is to avoid confusing new users.</p>
+            <p>There are three ways to disable JavaScript in Tor Browser:</p>
+            <ul>
+                <li>Set the Tor Browser security level to <strong>Safest</strong>, which disables JavaScript everywhere.</li>
+                <li>Select the NoScript icon that you placed in the toolbar. Click the options icon. On the <strong>General</strong> tab, set the <strong>DEFAULT</strong> to
+                disallow JavaScript. Optionally, set per-site permissions to allow JavaScript from domains you trust.</li>
+                <li>As a failsafe, you can disable JavaScript at the browser level. Visit <code>about:config</code>, search for <code>javascript.enabled</code>, and toggle its
+                value to <strong>false</strong>.</li>
+            </ul>
+            <h2><a id="7"></a>7. Torrc File</h2>
+            <h3><a id="7-1"></a>7.1. Location of Torrc</h3>
+            <p>A file named <code>torrc</code> controls how Tor behaves. The default <code>torrc</code> generated by Tor Browser should work fine for most users. To find out where
+            your <code>torrc</code> file is:</p>
+            <ul>
+                <li>On Windows or Linux, look in a location such as <code>~/Downloads/tor-browser_en-US/Browser/TorBrowser/Data/Tor</code></li>
+                <li>On macOS, look in a location such as <code>~/Library/Application Support/TorBrowser-Data/Tor</code>.</li>
+            </ul>
+            <h3><a id="7-2"></a>7.2. Example Torrc</h3>
+            <p>Here is a sample <code>torrc</code> file. The real bridge lines have been replaced by a fake bridge line from our example earlier on.</p>
+            <blockquote>
+                <code># This file was generated by Tor; if you edit it, comments will not be preserved<br>
+                # The old torrc file was renamed to torrc.orig.1 or similar, and Tor will ignore it<br>
+                <br>
+                Bridge obfs4 11.11.11.11:2222 B6740861AE06B247f55CB63EA347E248F72CCE08 cert=YjY3NDA4NjFhZTA2YjI0N2Y1NWNiNjNlYTM0N2UyNDhmNzJjY2UwODMzOTg2NGM3N2NjMW iat-mode=0<br>
+                ClientOnionAuthDir /home/username/Downloads/tor-browser_en-US/Browser/TorBrowser/Data/Tor/onion-auth<br>
+                DataDirectory /home/username/Downloads/tor-browser_en-US/Browser/TorBrowser/Data/Tor<br>
+                GeoIPFile /home/username/Downloads/tor-browser_en-US/Browser/TorBrowser/Data/Tor/geoip<br>
+                GeoIPv6File /home/username/Downloads/tor-browser_en-US/Browser/TorBrowser/Data/Tor/geoip6<br>
+                UseBridges 1</code>
+            </blockquote>
+            <h3><a id="7-3"></a>7.3. Country Codes</h3>
+            <p>You can exclude certain countries from the nodes in your circuit by putting an <code>ExcludeNodes</code> directive in your <code>torrc</code> file. Use the <a href="https://www.iso.org/iso-3166-country-codes.html" target="_blank">ISO 3166</a> two-character codes to specify countries. For example:</p>
+            <blockquote>
+                <code>ExcludeNodes {cn},{hk},{mo},{by},{ru},{ir}</code>
+            </blockquote>
+            <p>Note that there may not be many nodes in the countries you specify. Also, specifying a unique combination of countries makes you less anonymous, since your requests
+            through the Tor network no longer looks like everyone else’s.</p>
+            <p>You can restrict the country of your exit node with the <code>ExitNodes</code> directive. For example:</p>
+            <blockquote>
+                <code>ExitNodes {us}</code>
+            </blockquote>
+            <p>Again, you will need to choose a country that has many exit nodes for this to work, and even so, you still make yourself less anonymous.</p>
+            <p>To enforce your node rules, even if this breaks your ability to construct a Tor circuit, add a directive:</p>
+            <blockquote>
+                <code>StrictNodes 1</code>
+            </blockquote>
+            <p>You need to restart Tor Browser after editing your <code>torrc</code> file.</p>
+            <h2><a id="8"></a>8. Get Help and Report Issues</h2>
+            <p>Here are some ways you can get support if you encounter problems with Tor Browser:</p>
+            <ul>
+                <li>You can ask informal questions on social media such as <a href="https://www.reddit.com/r/TOR" target="_blank">Reddit</a> or <a href="https://tor.stackexchange.com/" target="_blank">Stack Exchange</a>
+                </li>
+                <li>You can send an email to <a href="mailto:frontdesk@torproject.org">frontdesk@torproject.org</a>
+                </li>
+                <li>You can browse <a href="https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues" target="_blank">known issues</a>
+                </li>
+                <li>You can join the <code>#tor</code> channel of the <a href="https://webchat.oftc.net/" target="_blank">Open and Free Technology Community</a> Internet Relay
+                Chat (IRC)
+                </li>
+            </ul>
+            <p><em>Updated 2022-07-11</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>L2TP/IPsec with PSK with Libreswan</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>L2TP/IPsec with PSK with Libreswan</h1>
+            <p>In this scenario, Layer 2 Tunneling Protocol (L2TP) is combined with IPsec. This arrangement uses fixed port numbers and is therefore easily blocked by censors.
+            Also, a preshared key (PSK) is not particularly secure. Nevertheless, there may be situations where ease-of-use is your top priority. Many client devices support
+            L2TP/IPsec PSK without the installation of additional software.</p>
+            <p>This configuration requires xL2TPd as well as Libreswan. For a simpler configuration, review the article on <a href="ipsec-libreswan.html">IPsec with Libreswan</a>.</p>
+            <p>The article on this page will show you how to create an L2TP/IPsec server on CentOS 8. Note that CentOS 8 reaches end-of-life on December 31, 2021.</p>
+            <p>In the examples, your workstation is at IP address <code>xx.xx.xx.xx</code>, and the server is at IP address <code>yy.yy.yy.yy</code>. Wherever you see these values
+            in the examples, you will need to change them to match your actual IP addresses. If you do not know your workstation’s IP address, you can determine it by opening a
+            browser and visiting <a href="https://www.ipchicken.com/" target="_blank">IPchicken.com</a>.</p>
+            <p>We also give instructions for an Android device as a sample client. Mobile devices are easily tracked and strongly linked to an individual. Again, we assume
+            ease-of-use is your main concern in this scenario and that you are in a country where L2TP/IPsec is not blocked.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Install and Configure Firewall</h3>
+            <p>We begin by installing a firewall and configuring it to accept IPsec. We also masquerade outgoing IP addresses. Issue the commands that follow:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install firewalld -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-service=ipsec</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-masquerade</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <p>For better security, restrict port 22 access to trusted IP addresses only. For example, if you always log in from IP address <code>xx.xx.xx.xx</code>, make that the
+            only IP address that will be trusted for SSH access:</p>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-source=xx.xx.xx.xx/32</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=cockpit</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Allow Forwarding</h3>
+            <p>Now enable packet forwarding in the Linux kernel. Create a new configuration file in <code>/usr/lib/sysctl.d</code>:</p>
+            <blockquote>
+                <code>vi /usr/lib/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <p>Insert a single line:</p>
+            <blockquote>
+                <code>net.ipv4.ip_forward=1</code>
+            </blockquote>
+            <p>Save the file. Make this change effective immediately.:</p>
+            <blockquote>
+                <code>sysctl -p /usr/lib/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install Packages</h3>
+            <p>Add the Extra Packages for Enterprise Linux repository:</p>
+            <blockquote>
+                <code>yum install epel-release -y</code>
+            </blockquote>
+            <p>Install LibreSwan and xL2TPd:</p>
+            <blockquote>
+                <code>yum install libreswan xl2tpd -y</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Set Up Preshared Key</h3>
+            <p>Edit the IPsec secrets file:</p>
+            <blockquote>
+                <code>vi /etc/ipsec.d/psk.secrets</code>
+            </blockquote>
+            <p>Insert a line with your preshared key. We will use as an example a preshared key of <code>ArialBrainChimpDentsEarth</code>:</p>
+            <blockquote>
+                <code>%any: PSK "ArialBrainChimpDentsEarth"</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="1-5"></a>1.5. Configure Libreswan</h3>
+            <p>Create a new file for L2TP/IPsec connections with a preshared key:</p>
+            <blockquote>
+                <code>vi /etc/ipsec.d/l2tp-ipsec-psk.conf</code>
+            </blockquote>
+            <p>Insert lines specifying a configuration like this:</p>
+            <pre>conn ikev1
+    authby=secret
+    pfs=no
+    auto=add
+    rekey=no
+    left=%defaultroute
+    right=%any
+    ikev2=never
+    ike=aes256-sha2,aes128-sha2,aes256-sha1,aes128-sha1,aes256-sha2;modp1024
+    esp=aes256-sha2_512,aes128-sha2_512,aes256-sha1,aes128-sha1;modp1024
+    type=transport
+    leftprotoport=17/1701
+    rightprotoport=17/%any
+    dpddelay=15
+    dpdtimeout=30
+    dpdaction=clear
+
+conn ikev1-nat
+    also=ikev1
+    rightsubnet=vhost:%priv
+</pre>
+            <p>Save the file.</p>
+            <h3><a id="1-6"></a>1.6. Configure xL2TPd</h3>
+            <p>Edit the xL2TPd configuration file:</p>
+            <blockquote>
+                <code>vi /etc/xl2tpd/xl2tpd.conf</code>
+            </blockquote>
+            <p>Insert a configuration like this. Change the virtual IP address range and local IP of the server if you wish.</p>
+            <pre>[global]
+ipsec saref = yes
+
+[lns default]
+ip range = 10.0.8.64-10.0.8.127
+local ip = 10.0.8.1
+require chap = yes
+refuse pap = yes
+require authentication = yes
+pppoptfile = /etc/ppp/options.xl2tpd
+length bit = yes
+</pre>
+            <p>Save the file. If you want more explanation of what the options do, issue the command:</p>
+            <blockquote>
+                <code>man xl2tpd.conf</code>
+            </blockquote>
+            <h3><a id="1-7"></a>1.7. Configure Point-to-Point Protocol Options</h3>
+            <p>Edit the Point-to-Point Protocol options file:</p>
+            <blockquote>
+                <code>vi /etc/ppp/options.xl2tpd</code>
+            </blockquote>
+            <p>Insert a configuration like this:</p>
+            <pre>ipcp-accept-local
+ipcp-accept-remote
+ms-dns 8.8.8.8
+ms-dns 1.1.1.1
+noccp
+auth
+idle 1800
+mtu 1410
+mru 1410
+nodefaultroute
+debug
+proxyarp
+connect-delay 5000
+</pre>
+            <p>Save the file. If you want more explanation of what the options do, issue the command:</p>
+            <blockquote>
+                <code>man pppd</code>
+            </blockquote>
+            <h3><a id="1-8"></a>1.8. Set Up Usernames and Passwords</h3>
+            <p>Edit the Point-to-Point Protocol secrets file:</p>
+            <blockquote>
+                <code>vi /etc/ppp/chap-secrets</code>
+            </blockquote>
+            <p>Insert usernames and passwords like this:</p>
+            <pre># Secrets for authentication using CHAP
+# client server secret      IP addresses
+alice    *      "ku9mvc94"  *
+bob      *      "szkkzg2s"  *
+carol    *      "dft97m29"  *
+</pre>
+            <p>Save the file.</p>
+            <h3><a id="1-9"></a>1.9. Start Libreswan</h3>
+            <p>Start Libreswan after every reboot, and also start it now:</p>
+            <blockquote>
+                <code>systemctl enable ipsec</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start ipsec</code>
+            </blockquote>
+            <h3><a id="1-10"></a>1.10. Start xL2TPd</h3>
+            <p>Start xL2TPd after every reboot, and also start it now:</p>
+            <blockquote>
+                <code>systemctl enable xl2tpd</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start xl2tpd</code>
+            </blockquote>
+            <h3><a id="1-11"></a>1.11. Check Libreswan and xL2TPd</h3>
+            <p>Check that Libreswan and xL2TPd are active and running:</p>
+            <blockquote>
+                <code>systemctl status ipsec</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl status xl2tpd</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Android Client</h2>
+            <p>The place where you add a VPN in Android varies from release to release. It may be under <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt;
+            <strong>Advanced</strong> &gt; <strong>VPN</strong> or it may be under <strong>Settings</strong> &gt; <strong>Connections</strong> &gt; <strong>More networks</strong>
+            &gt; <strong>VPN</strong>.</p>
+            <p>Add a new VPN:</p>
+            <ul>
+                <li>Name is whatever you want, e.g. <code>yy.yy.yy.yy</code></li>
+                <li>Type is <strong>L2TP/IPsec PSK</strong></li>
+                <li>Server address in our example is <code>yy.yy.yy.yy</code></li>
+                <li>L2TP secret is blank</li>
+                <li>IPsec identifier is blank</li>
+                <li>IPsec pre-shared key is <code>ArialBrainChimpDentsEarth</code> in our example</li>
+                <li>Username <code>alice</code></li>
+                <li>Password <code>ku9mvc94</code></li>
+            </ul>
+            <p>Click <strong>Save</strong>. Select the VPN, and click <strong>Connect</strong>.</p>
+            <h2><a id="3"></a>3. Note for Windows Clients</h2>
+            <p>If you try this with a Windows client, it will be necessary to change the adapter settings for the L2TP/IPsec adapter. Right-click on the L2TP/IPsec adapter, and
+            select <strong>Properties</strong>. On the <strong>Security</strong> tab, select the radio button for <strong>Allow these protocols</strong>. Check the boxes for
+            <strong>Unencrypted password (PAP)</strong>, <strong>Challenge Handshake Authentication Protocol (CHAP)</strong>, and <strong>Microsoft CHAP Version 2 (MS-CHAP
+            v2)</strong>.</p>
+            <p>Also, it would be better to edit the Windows registry to allow use of <code>modp2048</code>. This would allow the use of stronger Diffie-Hellman groups than the
+            <code>modp1024</code> (DH group 2) in our example configuration. To edit the registry, press the <strong>Win</strong>+<strong>r</strong> keys, type
+            <code>regedit</code>, then press <strong>Enter</strong>. Navigate to <code>HKEY_LOCAL_MACHINE</code> &gt; <code>SYSTEM</code> &gt; <code>CurrentControlSet</code> &gt;
+            <code>Services</code> &gt; <code>Rasman</code> &gt; <code>Parameters</code>. Insert a new DWORD (32-bit value). The name is <code>NegotiateDH2048_AES256</code>. The
+            value is <code>1</code>, which means enable AES-256-CBC and MODP-2048.</p>
+            <h2><a id="4"></a>4. Get Help and Report Issues</h2>
+            <p>For your client device in general, seek support through the normal channels for that device. For Libreswan in particular, support arrangements are listed in the
+            <a href="https://libreswan.org/wiki/Support" target="_blank">Libreswan wiki</a>.</p>
+            <p><em>Updated 2021-06-17</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WireGuard + Cloak</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>WireGuard + Cloak</h1>
+            <p>Cloak disguises a proxy or VPN server as a web server in order to evade deep packet inspection (DPI). The disguised server secretly implements Shadowsocks, OpenVPN,
+            or Tor. This post describes an experimental implementation in which Cloak obfuscates a WireGuard server. WireGuard and Cloak run on a Debian 11 server. In the
+            examples, we give the server IP address as <code>168.168.168.168</code>. We end the tutorial by describing the procedure for setting up a Windows client.</p>
+            <h2><a id="1"></a>1. Open Firewall</h2>
+            <p>Firewalls are typically implemented with <code>nftables</code>, <code>iptables</code>, <code>ufw</code>, <code>firewalld</code>, or security groups. Whichever one
+            you are using, you will need to open ports <code>80</code> and <code>443</code> for <code>TCP</code> input and persist your changes across reboots.</p>
+            <p>An example for <code>iptables</code>:</p>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 80 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 443 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install iptables-persistent</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Install WireGuard on Server</h2>
+            <p>Install WireGuard using the <code>angristan</code> script:</p>
+            <blockquote>
+                <code>curl -O https://raw.githubusercontent.com/angristan/wireguard-install/master/wireguard-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x wireguard-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./wireguard-install.sh</code>
+            </blockquote>
+            <p>Answer the questions that the script prompts you for. You can accept the defaults or enter your own values. In the example that follows, all the values were
+            defaults except for the port number of <code>51820</code>.</p>
+            <ul>
+                <li><code>IPv4 or IPv6 public address: 168.168.168.168</code></li>
+                <li><code>Public interface: eth0</code></li>
+                <li><code>WireGuard interface name: wg0</code></li>
+                <li><code>Server's WireGuard IPv4: 10.66.66.1</code></li>
+                <li><code>Server's WireGuard IPv6: fd42:42:42::1</code></li>
+                <li><code>Server's WireGuard port [1-65535]: 51820</code></li>
+                <li><code>First DNS resolver to use for the clients: 94.140.14.14</code></li>
+                <li><code>Second DNS resolver to use for the clients (optional): 94.140.15.15</code></li>
+            </ul>
+            <p>At the end of the script, enter your choices for the first WireGuard client:</p>
+            <ul>
+                <li><code>Client name: pc</code></li>
+                <li><code>Client's WireGuard IPv4: 10.66.66.2</code></li>
+                <li><code>Client's WireGuard IPv6: fd42:42:42::2</code></li>
+            </ul>
+            <p>The script creates a server configuration file <code>/etc/wireguard/wg0.conf</code> that looks like this:</p>
+            <blockquote>
+                <code>[Interface]<br>
+                Address = 10.66.66.1/24,fd42:42:42::1/64<br>
+                ListenPort = 51820<br>
+                PrivateKey = 8K/fTquVOSHxSmNnMY8dbvfpgbiXMEozf7WcPW8942o=<br>
+                PostUp = iptables -A FORWARD -i eth0 -o wg0 -j ACCEPT; iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; ip6tables -A
+                FORWARD -i wg0 -j ACCEPT; ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE<br>
+                PostDown = iptables -D FORWARD -i eth0 -o wg0 -j ACCEPT; iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; ip6tables -D
+                FORWARD -i wg0 -j ACCEPT; ip6tables -t nat -D POSTROUTING -o eth0 -j MASQUERADE<br>
+                <br>
+                ### Client pc<br>
+                [Peer]<br>
+                PublicKey = 5w1dNTg10Nw1XXLmEn4+4SajwX7xgSftH8TayfFrdA8=<br>
+                PresharedKey = 0fEJF/W0Rb6OhAdZ5/ptOXkNkRBk08OyVA0jiGvtFI0=<br>
+                AllowedIPs = 10.66.66.2/32,fd42:42:42::2/128</code>
+            </blockquote>
+            <p>The script also creates a first client configuration file <code>/root/wg0-client-pc.conf</code> that looks like this:</p>
+            <blockquote>
+                <code>[Interface]<br>
+                PrivateKey = eOh9TSSHqhkenmifQ9T8pNkSJ99lgSrBZ2Q1wqdLk0Q=<br>
+                Address = 10.66.66.2/32,fd42:42:42::2/128<br>
+                DNS = 94.140.14.14,94.140.15.15<br>
+                <br>
+                [Peer]<br>
+                PublicKey = LOOwb20PN1hQh0wKZ8qVZCE5EKlolsPwNI7IUOyR1EQ=<br>
+                PresharedKey = 0fEJF/W0Rb6OhAdZ5/ptOXkNkRBk08OyVA0jiGvtFI0=<br>
+                Endpoint = 107.161.24.219:51820<br>
+                AllowedIPs = 0.0.0.0/0,::/0</code>
+            </blockquote>
+            <p>You can check that the script has set the systemd service running with the command:</p>
+            <blockquote>
+                <code>systemctl status wg-quick@wg0</code>
+            </blockquote>
+            <h2><a id="3"></a>3. Install Cloak on Server</h2>
+            <h3><a id="3-1"></a>3.1. Download Cloak</h3>
+            <p>Open a browser on your PC and visit the <a href="https://github.com/cbeuw/Cloak/releases" target="_blank">GitHub Cloak releases page</a>. Determine the version
+            number of the latest release. For example, right now it is <code>2.6.0</code>.</p>
+            <p>On your server, download the latest binary for 64-bit Linux. For example, for <code>2.6.0</code>:</p>
+            <blockquote>
+                <code>wget https://github.com/cbeuw/Cloak/releases/download/v2.6.0/ck-server-linux-amd64-v2.6.0</code>
+            </blockquote>
+            <p>If this gives a temporary failure in name resolution, reboot and try again.</p>
+            <p>Copy the binary into a directory in your path with the name <code>ck-server</code>:</p>
+            <blockquote>
+                <code>cp ck-server-linux-amd64-v2.6.0 /usr/local/bin/ck-server</code>
+            </blockquote>
+            <p>Make <code>ck-server</code> executable:</p>
+            <blockquote>
+                <code>chmod +x /usr/local/bin/ck-server</code>
+            </blockquote>
+            <p>Allow Cloak to bind to privileged ports (i.e. TCP/IP port numbers below 1024):</p>
+            <blockquote>
+                <code>setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/ck-server</code>
+            </blockquote>
+            <h3><a id="3-2"></a>3.2. Generate Public-Private Key Pair</h3>
+            <p>Generate a public-private key pair:</p>
+            <blockquote>
+                <code>ck-server -k</code>
+            </blockquote>
+            <p>The public key and private key are delivered, separated by a comma. Here is an example of what the result might look like:</p>
+            <blockquote>
+                <code>EjzZwdesObTyBWW9rI97uyztwK+4XFlDxxSrv9qyNFU=,cL2kY7rvneraJTyqbjy33rDAC/DQ3hyamRPAVolqgnI=</code>
+            </blockquote>
+            <ul>
+                <li>The base-64 string <em>before</em> the comma is the <em>public</em> key, to be given to users</li>
+                <li>The base-64 string <em>after</em> the comma is the <em>private</em> key, to be kept on the server</li>
+            </ul>
+            <h3><a id="3-3"></a>3.3. Generate Administrator Id</h3>
+            <p>Generate a secret identifier for the administrator like this:</p>
+            <blockquote>
+                <code>ck-server -u</code>
+            </blockquote>
+            <p>It will produce a base-64 string that looks like this:</p>
+            <blockquote>
+                <code>OuFKRCChbpTWrR1JXVg0ag==</code>
+            </blockquote>
+            <h3><a id="3-4"></a>3.4. Generate User Id</h3>
+            <p>Generate an identifier for an ordinary user. We will make this user have no bandwidth or credit limit restrictions.</p>
+            <blockquote>
+                <code>ck-server -u</code>
+            </blockquote>
+            <p>The command will produce a base-64 string that looks like this:</p>
+            <blockquote>
+                <code>JXD42BdCNynBeKq+G0KbFA==</code>
+            </blockquote>
+            <h3><a id="3-5"></a>3.5. Configure Cloak</h3>
+            <p>For your reference, there is a <a href="https://github.com/cbeuw/Cloak/blob/master/example_config/ckserver.json" target="_blank">sample configuration file on GitHub</a>.</p>
+            <p>Create a directory for Cloak:</p>
+            <blockquote>
+                <code>mkdir /etc/cloak</code>
+            </blockquote>
+            <p>Edit your server’s configuration file for Cloak:</p>
+            <blockquote>
+                <code>vi /etc/cloak/ckserver.json</code>
+            </blockquote>
+            <p>Insert contents like the example below, substituting in your user id, private key, and administrator id:</p>
+            <pre>{
+  "ProxyBook": {
+    "wireguard": [
+      "udp",
+      "127.0.0.1:51820"
+    ]
+  },
+  "BindAddr": [
+    ":80",
+    ":443"
+  ],
+  "BypassUID": [
+    "JXD42BdCNynBeKq+G0KbFA=="
+  ],
+  "RedirAddr": "www.bing.com",
+  "PrivateKey": "cL2kY7rvneraJTyqbjy33rDAC/DQ3hyamRPAVolqgnI=",
+  "AdminUID": "OuFKRCChbpTWrR1JXVg0ag==",
+  "DatabasePath": "/etc/cloak/userinfo.db",
+  "StreamTimeout": 300
+}</pre>
+            <ul>
+                <li><code>ProxyBook</code> tells Cloak where to forward authenticated proxy traffic to, which for us is WireGuard on port <code>udp/51820</code></li>
+                <li><code>BindAddr</code> is a list of addresses Cloak will bind and listen to, which for us is <code>443</code></li>
+                <li><code>BypassUID</code> is a list of UIDs that are authorised without any bandwidth or credit limit restrictions</li>
+                <li><code>RedirAddr</code> is the redirection address when the incoming traffic is not from an authenticated Cloak client</li>
+                <li><code>PrivateKey</code> is the static curve25519 Diffie-Hellman private key encoded in base-64</li>
+                <li><code>AdminUID</code> is the user id of the admin user in base-64</li>
+                <li><code>DatabasePath</code> is the path to <code>userinfo.db</code> (if <code>userinfo.db</code> doesn’t exist in this directory, Cloak will create one
+                automatically)</li>
+                <li><code>StreamTimeout</code> is the number of seconds of no sent data after which the incoming Cloak client connection will be terminated</li>
+            </ul>
+            <p>Save the Cloak server configuration file.</p>
+            <h3><a id="3-6"></a>3.6. Configure Systemd for Cloak</h3>
+            <p>Create a systemd service file, so that we can make Cloak start after every reboot and run continually as a service:</p>
+            <blockquote>
+                <code>vi /usr/lib/systemd/system/cloak.service</code>
+            </blockquote>
+            <p>Insert contents like this:</p>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=Cloak Server<br>
+                After=network.target<br>
+                <br>
+                [Service]<br>
+                Type=simple<br>
+                ExecStart=/usr/local/bin/ck-server -c /etc/cloak/ckserver.json<br>
+                Restart=on-failure<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="3-7"></a>3.7. Run Cloak</h3>
+            <p>Make Cloak start after every reboot and run continually as a service:</p>
+            <blockquote>
+                <code>systemctl enable cloak</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start cloak</code>
+            </blockquote>
+            <p>Check the status of the Cloak service:</p>
+            <blockquote>
+                <code>systemctl status cloak</code>
+            </blockquote>
+            <p>The above command should show that Cloak is <code>active (running)</code>. Type <code>q</code> to quit the status display. Check that Cloak server is listening:</p>
+            <blockquote>
+                <code>ss -tulpn | grep ck</code>
+            </blockquote>
+            <p>The above command should show that Cloak (<code>ck-server</code>) is listening on ports <code>80</code> and <code>443</code>.</p>
+            <p>Your work on the server is done for now, so exit your SSH session with the server:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="4"></a>4. Set Up Windows Client</h2>
+            <p>Now work on your PC, which in this tutorial is running Windows.</p>
+            <h3><a id="4-1"></a>4.1. Download Cloak Client</h3>
+            <p>In your browser, visit <a href="https://github.com/cbeuw/Cloak/releases" target="_blank">GitHub</a> and determine the latest version of Cloak. We will use version
+            <code>2.6.0</code> as our example.</p>
+            <p>Download <code>ck-client-windows-amd64-v2.6.0.exe</code> from GitHub to your PC’s <code>Downloads</code> directory.</p>
+            <h3><a id="4-2"></a>4.2. Configure Cloak Client</h3>
+            <p>For your reference, there is a sample client configuration file on <a href="https://github.com/cbeuw/Cloak/blob/master/example_config/ckclient.json" target="_blank">GitHub</a>.</p>
+            <p>In the <code>Downloads</code> folder, create a client configuration file for Cloak named <code>ckclient.json</code>. You can use Notepad or Notepad++ to edit the
+            file. Insert contents like the example below, substituting in your <code>UID</code> and <code>PublicKey</code>.</p>
+            <p>This example has <code>EncryptionMethod</code> as <code>plain</code> for simplicity, but in the real world you would change it to <code>aes-gcm</code> or
+            <code>chacha20-poly1305</code>.</p>
+            <pre>{
+  "Transport": "direct",
+  "ProxyMethod": "wireguard",
+  "EncryptionMethod": "plain",
+  "UID": "JXD42BdCNynBeKq+G0KbFA==",
+  "PublicKey": "EjzZwdesObTyBWW9rI97uyztwK+4XFlDxxSrv9qyNFU=",
+  "ServerName": "www.bing.com",
+  "NumConn": 4,
+  "BrowserSig": "firefox",
+  "StreamTimeout": 300
+}</pre>
+            <ul>
+                <li><code>Transport</code> can be either direct or CDN</li>
+                <li><code>ProxyMethod</code> is the name of the proxy method you are using</li>
+                <li><code>EncryptionMethod</code> is the name of the encryption algorithm you want Cloak to use, over and above the encryption in the proxy method</li>
+                <li><code>UID</code> is your user id in base-64</li>
+                <li><code>PublicKey</code> is the static curve25519 public key, given by the server admin</li>
+                <li><code>ServerName</code> is the domain you want to make your ISP or firewall think you are visiting</li>
+                <li><code>NumConn</code> is the amount of underlying TCP connections you want to use</li>
+                <li><code>BrowserSig</code> is the browser you want to appear to be using</li>
+                <li><code>StreamTimeout</code> is the number of seconds of no sent data after which the incoming proxy connection will be terminated</li>
+            </ul>
+            <p>Save the file.</p>
+            <h3><a id="4-3"></a>4.3. Install WireGuard for Windows Client</h3>
+            <p>Download WireGuard for Windows installer from <a href="https://www.wireguard.com/install" target="_blank">https://www.wireguard.com/install</a>.</p>
+            <p>Run the installer.</p>
+            <p>Add a new tunnel like the one below. Note that the endpoint has been changed to be localhost (<code>127.0.0.1</code>) port <code>1984</code>, not the remote
+            server!</p>
+            <blockquote>
+                <code>[Interface]<br>
+                PrivateKey = eOh9TSSHqhkenmifQ9T8pNkSJ99lgSrBZ2Q1wqdLk0Q=<br>
+                Address = 10.66.66.2/32,fd42:42:42::2/128<br>
+                DNS = 94.140.14.14,94.140.15.15<br>
+                <br>
+                [Peer]<br>
+                PublicKey = LOOwb20PN1hQh0wKZ8qVZCE5EKlolsPwNI7IUOyR1EQ=<br>
+                PresharedKey = 0fEJF/W0Rb6OhAdZ5/ptOXkNkRBk08OyVA0jiGvtFI0=<br>
+                Endpoint = 127.0.0.1:1984<br>
+                AllowedIPs = 0.0.0.0/0,::/0</code>
+            </blockquote>
+            <p>Uncheck the <strong>Block untunneled traffic (kill-switch)</strong> checkbox.</p><img src="../images/wireguard-cloak.png" alt=
+            "Configuring WireGuard for Windows tunnel to pass through Cloak on localhost">
+            <h3><a id="4-4"></a>4.4. Add Route to Server</h3>
+            <p>Open a Windows command prompt with <strong>Run as administrator</strong>. Click <strong>Yes</strong> to allow. Add a route to your server via your main interface’s
+            gateway. For example, if your server is at <code>168.168.168.168</code> and your primary gateway is at <code>192.168.122.1</code>:</p>
+            <blockquote>
+                <code>route ADD 168.168.168.168 MASK 255.255.255.255 192.168.122.1</code>
+            </blockquote>
+            <h3><a id="4-5"></a>4.5. Run Cloak Client</h3>
+            <p>Open a Windows Command Prompt window.</p>
+            <p>Change into your <code>Downloads</code> directory:</p>
+            <blockquote>
+                <code>cd Downloads</code>
+            </blockquote>
+            <p>Run Cloak, pointing to your configuration file <code>ckclient.json</code> and your server <code>168.168.168.168</code>, and specifying <code>-u</code> for UDP:</p>
+            <blockquote>
+                <code>ck-client-windows-amd64-v2.6.0.exe -u -c ckclient.json -s 168.168.168.168</code>
+            </blockquote>
+            <p>You will see a message, <code>Listening on UDP 127.0.0.1:1984 for wireguard client</code>. Leave the command prompt window open, with Cloak running in it.</p>
+            <h3><a id="4-6"></a>4.6. Connect WireGuard Client to Server</h3>
+            <p><strong>Activate</strong> your WireGuard tunnel.</p>
+            <p>In the Cloak window, you will see messages <code>Attempting to start a new session</code> and <code>Session 123456789 established</code>.</p>
+            <h3><a id="4-7"></a>4.7. End-to-End Test</h3>
+            <p>Check the end-to-end functionality to confirm that TunSafe and Cloak are both configured correctly. Visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see the IP address of the server, not your local client.</p>
+            <h3><a id="4-8"></a>4.8. Disconnect</h3>
+            <p>Deactive your tunnel in WireGuard for Windows client.</p>
+            <p>Terminate the Cloak client process with <strong>Ctrl</strong>+<strong>c</strong>.</p>
+            <p>Delete the static route to your server:</p>
+            <blockquote>
+                <code>route DELETE 168.168.168.168 MASK 255.255.255.255 192.168.122.1</code>
+            </blockquote>
+            <h2><a id="5"></a>5. Get Help and Report Issues</h2>
+            <ul>
+                <li>For Cloak issues, post in the <strong>Issues</strong> section for <a href="https://github.com/cbeuw/Cloak/issues" target="_blank">Cloak on GitHub</a>
+                </li>
+                <li>For WireGuard, the best place to get help is the <strong>#wireguard</strong> IRC channel on <a href="https://web.libera.chat/#wireguard" target="_blank">libera.chat</a>
+                </li>
+            </ul>
+            <p><em>Updated 2022-06-09</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

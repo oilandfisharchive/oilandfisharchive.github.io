@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IKEv2 with Libreswan</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>IKEv2 with Libreswan</h1>
+            <p>IKEv2 is defined by the Internet Engineering Task Force standard <a href="https://tools.ietf.org/html/rfc7296" target="_blank">RFC 7296</a>. It uses fixed port
+            numbers. It is therefore easily blocked by censors. Nevertheless, it may work in some countries.</p>
+            <p>This article shows you how to create an IKEv2 server using Libreswan on CentOS 8. Note that CentOS 8 reaches end-of-life on December 31, 2021.</p>
+            <p>In the examples we give, the client is at IP address <code>xx.xx.xx.xx</code>, and the server is at IP address <code>yy.yy.yy.yy</code>. Wherever you see these
+            values in the examples, you will need to change them to match your actual IP addresses. If you do not know your workstation’s IP address, you can determine it by
+            opening a browser and visiting <a href="https://www.ipchicken.com/" target="_blank">IPchicken.com</a>.</p>
+            <p>We will also give instructions for the example of a Windows client device.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Install and Configure Firewall</h3>
+            <p>We begin by installing a firewall and configuring it to accept packets using AH protocol and ESP protocol, plus 500/udp and 4500/udp, which will be used with
+            clients behind Network Address Translation. We also masquerade outgoing IP addresses. Issue the commands that follow:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install firewalld -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-service=ipsec</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-masquerade</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <p>For better security, restrict port 22 access to trusted IP addresses only. For example, if you always log in from IP address <code>xx.xx.xx.xx</code>, make that the
+            only IP address that will be trusted for SSH access:</p>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-source=xx.xx.xx.xx/32</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=cockpit</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Allow Forwarding</h3>
+            <p>Now enable packet forwarding in the Linux kernel. Create a new configuration file in <code>/usr/lib/sysctl.d</code>:</p>
+            <blockquote>
+                <code>vi /usr/lib/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <p>Insert a single line:</p>
+            <blockquote>
+                <code>net.ipv4.ip_forward=1</code>
+            </blockquote>
+            <p>Save the file. Make this change effective immediately.:</p>
+            <blockquote>
+                <code>sysctl -p /usr/lib/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install Packages</h3>
+            <p>Install LibreSwan by entering the command:</p>
+            <blockquote>
+                <code>yum install libreswan -y</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Initialize Public Key Infrastructure</h3>
+            <p>Create fresh Network Security Services databases by entering the command:</p>
+            <blockquote>
+                <code>ipsec initnss</code>
+            </blockquote>
+            <p>The databases <code>cert9.db</code> and <code>key4.db</code> are created in the directory <code>/etc/ipsec.d</code>.</p>
+            <h3><a id="1-5"></a>1.5. Create Certificate Authority Certificate</h3>
+            <p>We will create a self-signed Certificate Authority (CA) certificate with a CA basic constraints extension. Issue the <code>certutil</code> command that follows,
+            replacing <code>Example CA</code> and <code>Example</code> with your own choices for values:</p>
+            <blockquote>
+                <code>certutil -S -x -n "Example CA" -s "O=Example,CN=Example CA" -k rsa -g 4096 -v 120 -d sql:/etc/ipsec.d -t "CT,," -2</code>
+            </blockquote>
+            <p>When prompted, generate randomness by typing on your keyboard at irregular intervals. Continue typing until the progress bar gets to the end. Then you are prompted
+            to press <strong>Enter</strong>.</p>
+            <p>When asked if this is a CA certificate, put <code>y</code> for yes. When asked for a path length constraint, press <strong>Enter</strong>. When asked if this is a
+            critical extension, put <code>n</code> for no.</p>
+            <p>If you want to check that your new certificate is in the database, issue the command:</p>
+            <blockquote>
+                <code>certutil -L -d sql:/etc/ipsec.d</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Create Server Certificate</h3>
+            <p>Generate the server certificate with appropriate as follows. Issue the <code>certutil</code> command, replacing <code>Example CA</code> and <code>Example</code>
+            with your own choices for values. Also replace <code>yy.yy.yy.yy</code> by your server’s actual IP address.</p>
+            <blockquote>
+                <code>certutil -S -c "Example CA" -n "yy.yy.yy.yy" -s "O=Example,CN=yy.yy.yy.yy" -k rsa -g 4096 -v 12 -d sql:/etc/ipsec.d -t ",," -1 -6 -8 "yy.yy.yy.yy"</code>
+            </blockquote>
+            <p>Again, a random seed must be generated for the creation of your key. Do some random typing until the process meter is full. Then you are prompted to press
+            <strong>Enter</strong>.</p>
+            <p>When you are asked about the usage, enter <code>0</code> for digital signature, then <code>2</code> for key encipherment, then anything else to end. When asked if
+            this is a critical extension, enter <code>n</code> for no.</p>
+            <p>When you are asked about the extended key usage, enter <code>0</code> for server authentication, <code>1</code> for client authentication, then anything else to
+            end. When asked if this is a critical extension, enter <code>n</code> for no.</p>
+            <p>Again, if you want to check that your server certificate is also in the database, issue the command:</p>
+            <blockquote>
+                <code>certutil -L -d sql:/etc/ipsec.d</code>
+            </blockquote>
+            <h3><a id="1-7"></a>1.7. Create Client Certificate</h3>
+            <p>Generate the client certificate, similar to the way you generated the server certificate. In the following example, replace <code>Example CA</code>,
+            <code>win10</code>, <code>example.com</code>, and <code>Example</code> by your own values:</p>
+            <blockquote>
+                <code>certutil -S -c "Example CA" -n "win10.example.com" -s "O=Example,CN=win10.example.com" -k rsa -g 4096 -v 12 -d sql:/etc/ipsec.d -t ",," -1 -6 -8
+                "win10.example.com"</code>
+            </blockquote>
+            <p>Again, a random seed must be generated that will be used in the creation of your key. Do some random typing until the bar reaches the end. Then press
+            <strong>Enter</strong>.</p>
+            <p>When you are asked about the usage, enter <code>0</code> for digital signature, then <code>2</code> for key encipherment, then anything else to end. When asked if
+            this is a critical extension, enter <code>n</code> for no.</p>
+            <p>When you are asked about the extended key usage, enter <code>0</code> for server authentication, <code>1</code> for client authentication, then anything else to
+            end. When asked if this is a critical extension, enter <code>n</code> for no.</p>
+            <p>Repeat this process if you have multiple clients, giving each one a different name instead of the <code>win10</code> we put in our examples.</p>
+            <p>If you want to see all the certificates you have put in the database, issue the command:</p>
+            <blockquote>
+                <code>certutil -L -d sql:/etc/ipsec.d</code>
+            </blockquote>
+            <h3><a id="1-8"></a>1.8. Configure Libreswan</h3>
+            <p>Create a new file for IKEv2 connections with machine certificate authenticaton:</p>
+            <blockquote>
+                <code>vi /etc/ipsec.d/ikev2-machine.conf</code>
+            </blockquote>
+            <p>Insert a configuration like this. Replace <code>yy.yy.yy.yy</code> by your server’s IP address. Also replace any other values, for example the virtual IP address
+            pool or the DNS servers.</p>
+            <pre>conn ikev2-machine
+    left=yy.yy.yy.yy
+    leftcert=yy.yy.yy.yy
+    leftid=@yy.yy.yy.yy
+    leftsendcert=always
+    leftsubnet=0.0.0.0/0
+    leftrsasigkey=%cert
+    right=%any
+    rightaddresspool=10.0.8.64-10.0.8.127
+    rightca=%same
+    rightrsasigkey=%cert
+    modecfgdns="8.8.8.8,8.8.4.4"
+    narrowing=yes
+    dpddelay=30
+    dpdtimeout=120
+    dpdaction=clear
+    auto=add
+    ikev2=insist
+    rekey=no
+    fragmentation=yes
+</pre>
+            <p>Save the file.</p>
+            <h3><a id="1-9"></a>1.9. Start Libreswan</h3>
+            <p>Start Libreswan after every reboot, and also start it now:</p>
+            <blockquote>
+                <code>systemctl enable ipsec</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start ipsec</code>
+            </blockquote>
+            <h3><a id="1-10"></a>1.10. Check Libreswan</h3>
+            <p>Check that Libreswan is active and running:</p>
+            <blockquote>
+                <code>systemctl status ipsec</code>
+            </blockquote>
+            <h3><a id="1-11"></a>1.11. Create Client P12 File</h3>
+            <p>Many types of client prefer a P12 file over separate certificate and key files. A P12 file follows the Public Key Cryptography Standard #12 format, and include keys
+            and certificates in one file.</p>
+            <p>Create a P12 file like this. Replace <code>win10</code> and <code>example.com</code> by your choices:</p>
+            <blockquote>
+                <code>pk12util -n "win10.example.com" -d sql:/etc/ipsec.d -o ~/win10.p12</code>
+            </blockquote>
+            <p>For higher security, protect the P12 file with a password when prompted. Anyone importing the P12 file into a client device will need to know this password.</p>
+            <p>Your work on the server side of things is done now, so exit your SSH session with the server:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h3><a id="1-12"></a>1.12. Securely Download Certificates</h3>
+            <p>The easiest way to securely download certificates to your device(s) is to first download them to a workstation on your LAN, where they will be behind a firewall,
+            then transfer them from the workstation to your final clients.</p>
+            <p>To download to a Linux workstation, go to your workstation and use the <code>scp</code> command. For example:</p>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:win10.p12 ~/Downloads/win10.p12</code>
+            </blockquote>
+            <p>To download to a Windows workstation, you can use the <code>pscp.exe</code> command that comes with <a href="https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html" target="_blank">PuTTY</a>. Here is a sample command that you would enter into a Windows Command
+            Prompt:</p>
+            <blockquote>
+                <code>"C:\Program Files\PuTTY\pscp.exe" root@yy.yy.yy.yy:win10.p12 Downloads\win10.p12</code>
+            </blockquote>
+            <p>For onward transfer to mobile devices, it is often convenient to create a secure website that presents the certificate to the final client.</p>
+            <h2><a id="2"></a>2. Windows Client</h2>
+            <h3><a id="2-1"></a>2.1. Import Certificates</h3>
+            <p>Use the Microsoft Management Console to import certificates from the P12 file. Press the <strong>Win</strong>+<strong>r</strong> keys, type <code>mmc</code>, then
+            press <strong>Enter</strong>. Do <strong>File</strong>, <strong>Add/Remove Snap-in</strong>, then choose <strong>Certificates</strong>. You <em>must</em> select
+            <strong>Computer Account</strong>. Import the P12 file into <strong>Personal</strong>. You will need to key in the password for the P12 file when you import it.</p>
+            <p>After import, but still in the Microsoft Management Console, cut the CA certificate (<code>Example CA</code> in our example), and paste it into <strong>Trusted Root
+            Certification Authorities</strong>.</p>
+            <h3><a id="2-2"></a>2.2. Add VPN Connection</h3>
+            <p>Add the new VPN connection in <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt; <strong>VPN</strong>. The VPN provider is <strong>Windows
+            (built-in)</strong>. The Connection name is (for example) <code>win10</code>. The Server name or address in our example is <code>yy.yy.yy.yy</code>. The VPN type is
+            <strong>IKEv2</strong>. The Type of sign-in info is <strong>Certificate</strong>.</p>
+            <h3><a id="2-3"></a>2.3. Set Authentication Method to Machine Certificate</h3>
+            <p>Once you have added the new connection, check that the authentication method is set to machine certificate. For example, if you named the connection
+            <code>win10</code>, then open PowerShell and issue the command:</p>
+            <blockquote>
+                <code>Get-VpnConnection -Name "win10"</code>
+            </blockquote>
+            <p>If necessary, set the authentication method to machine certificate:</p>
+            <blockquote>
+                <code>Set-VpnConnection -Name "win10" -AuthenticationMethod "MachineCertificate"</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4. Enable MODP2048 in Registry</h3>
+            <p>Now edit the registry to allow use of <code>modp2048</code>. Press the <strong>Win</strong>+<strong>r</strong> keys, type <code>regedit</code>, then press
+            <strong>Enter</strong>. Navigate to <code>HKEY_LOCAL_MACHINE</code> &gt; <code>SYSTEM</code> &gt; <code>CurrentControlSet</code> &gt; <code>Services</code> &gt;
+            <code>Rasman</code> &gt; <code>Parameters</code>. Insert a new DWORD (32-bit value). The name is <code>NegotiateDH2048_AES256</code>. The value is <code>1</code>,
+            which means enable AES-256-CBC and MODP-2048.</p>
+            <h3><a id="2-5"></a>2.5. Route Traffic through VPN</h3>
+            <p>Route all traffic through your VPN connection as follows. Open the <strong>Control Panel</strong> &gt; <strong>Network and Internet</strong> &gt; <strong>Network
+            and Sharing Center</strong>. Click <strong>Change adapter settings</strong>. Select your IKEv2 interface. Right-click, and select <strong>Properties</strong>. Go to
+            the <strong>Networking</strong> tab. Select the row for <strong>Internet Protocol Version 4 (TCP/IPv4)</strong>. Click <strong>Properties</strong>. Click
+            <strong>Advanced</strong>. Check the box for <strong>Use default gateway on remote network</strong>.</p>
+            <h3><a id="2-6"></a>2.6. Connect</h3>
+            <p>Now you can connect your client to your server from <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt; <strong>VPN</strong>.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>For your client device in general, seek support through the normal channels for that device. For Libreswan in particular, support arrangements are listed in the
+            <a href="https://libreswan.org/wiki/Support" target="_blank">Libreswan wiki</a>.</p>
+            <p><em>Updated 2021-06-17</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

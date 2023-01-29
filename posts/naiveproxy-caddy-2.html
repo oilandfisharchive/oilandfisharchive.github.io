@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NaiveProxy + Caddy 2</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>NaiveProxy + Caddy 2</h1>
+            <p>NaiveProxy is an anticensorship tool that uses Chrome’s network stack to better camouflage your traffic. Recent versions of NaiveProxy (we are currently on
+            NaiveProxy 91) are implemented as customized builds of Caddy 2’s ForwardProxy plugin. Caddy 2 is a major revision of Caddy 1.</p>
+            <p>Prebuilt clients for NaiveProxy are available for Android, Linux, OpenWRT, macOS, and Windows.</p>
+            <p>In this article, you’ll learn how to install and configure NaiveProxy and Caddy 2 on a Debian or Ubuntu server and client. The procedure has been tested with a
+            server running Ubuntu 21.04.</p>
+            <h2><a id="1"></a>1. Set Up Server</h2>
+            <h3><a id="1-1"></a>1.1. Get Domain Name and Server</h3>
+            <p>Before you set up your NaiveProxy server, you’ll need to acquire a domain name. If you do not already have a domain name registrar, you can check out <a href="https://www.freenom.com/" target="_blank">Freenom</a> (free) or <a href="https://porkbun.com/" target="_blank">Porkbun</a> (paid) or any other registrar of your
+            choosing.</p>
+            <p>You’ll also need a virtual private server (VPS). If you do not already have a VPS provider, you can check out <a href="https://www.linode.com/" target="_blank">Linode</a> or <a href="https://cloud.google.com/compute" target="_blank">Google</a> or any other provider of your choice.</p>
+            <p>At your domain name registrar, create DNS type <code>A</code> records pointing from the naked domain and the <code>www</code> subdomain to the public IP address of
+            your VPS. You’ll need to allow some time for the DNS addition to propagate. On a PC, you can check to see if the propagation has happened by looking up your domain and
+            subdomain. For example, if your domain name is <code>example.com</code>, then open a command prompt and issue the commands:</p>
+            <blockquote>
+                <code>nslookup example.com</code>
+            </blockquote>
+            <blockquote>
+                <code>nslookup www.example.com</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Install and Configure Firewall</h3>
+            <p>There are multiple ways to implement a firewall on a Debian/Ubuntu server: nftables, iptables, ufw, and firewalld. The modern way is nftables, and that is what we
+            will use here.</p>
+            <p>SSH into your server as <code>root</code>. Issue each of the following commands in turn to install and start nftables:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>Configure the firewall to accept related traffic, internal traffic, and <code>ping</code> requests:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol icmp icmp type echo-request counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip6 nexthdr icmpv6 icmpv6 type echo-request counter accept</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. (If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better.)</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 counter accept</code>
+            </blockquote>
+            <p>Open ports 80 and 443 for HTTP and HTTPS requests, respectively:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport { http, https } counter accept</code>
+            </blockquote>
+            <p>Drop all unexpected input:</p>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Save the rules:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Implement BBR</h3>
+            <p>Bottleneck Bandwidth and Round-trip propagation time (BBR) is a TCP congestion control algorithm developed at Google. Under certain types of network congestion, it
+            will improve your latency. Implement BBR TCP congestion control on your server with the following commands:</p>
+            <blockquote>
+                <code>cat &gt;&gt; /etc/sysctl.d/50-bbr.conf &lt;&lt;EOF<br>
+                net.core.default_qdisc=fq<br>
+                net.ipv4.tcp_congestion_control=bbr<br>
+                EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/50-bbr.conf</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Create Camouflage Website</h3>
+            <p>So that your server can pass a manual inspection, install a few pages of web content. Make a directory for the web pages:</p>
+            <blockquote>
+                <code>mkdir -p /var/www/html</code>
+            </blockquote>
+            <p>Install the prerequisite utilities:</p>
+            <blockquote>
+                <code>apt install wget zip unzip -y</code>
+            </blockquote>
+            <p>Get some sample web pages from GitHub:</p>
+            <blockquote>
+                <code>wget https://github.com/arcdetri/sample-blog/archive/master.zip</code>
+            </blockquote>
+            <p>Unzip the downloaded sample web pages:</p>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <p>Copy the web pages into place in your directory for web pages:</p>
+            <blockquote>
+                <code>cp -rf sample-blog-master/html/* /var/www/html/</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Install Go Language</h3>
+            <p>On your PC, open Firefox and visit <a href="https://golang.org/dl" target="_blank">golang.org/dl</a>. Determine the most recent version of Go for 64-bit Linux. At
+            the time of writing, this is named <code>go1.16.5.linux-amd64.tar.gz</code>.</p>
+            <p>In your SSH session with your server, download the archive for the Go language:</p>
+            <blockquote>
+                <code>wget https://golang.org/dl/go1.16.5.linux-amd64.tar.gz</code>
+            </blockquote>
+            <p>Extract the archive into <code>/usr/local</code>:</p>
+            <blockquote>
+                <code>tar -C /usr/local -xzf go1.16.5.linux-amd64.tar.gz</code>
+            </blockquote>
+            <p>Add <code>/usr/local/go/bin</code> to your executable PATH by editing the system-wide profile:.</p>
+            <blockquote>
+                <code>vi /etc/profile</code>
+            </blockquote>
+            <p>Add a line at the end:</p>
+            <blockquote>
+                <code>export PATH=$PATH:/usr/local/go/bin</code>
+            </blockquote>
+            <p>Write the file to disk, and quit the editor. Log out and log in again:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <blockquote>
+                <code>ssh root@www.example.com</code>
+            </blockquote>
+            <p>Check that the Go language is installed by issuing the command:</p>
+            <blockquote>
+                <code>go version</code>
+            </blockquote>
+            <p>You should see a response that looks like this:</p>
+            <blockquote>
+                <code>go version go1.16.5 linux/amd64</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Get Source for ForwardProxy</h3>
+            <p>Get the source code for the NaiveProxy version of Caddy’s ForwardProxy:</p>
+            <blockquote>
+                <code>apt install git -y</code>
+            </blockquote>
+            <blockquote>
+                <code>git clone -b naive https://github.com/klzgrad/forwardproxy</code>
+            </blockquote>
+            <h3><a id="1-7"></a>1.7. Custom Build of Caddy 2</h3>
+            <p>Download and install packages and dependencies for custom builds of the Caddy 2 web server:</p>
+            <blockquote>
+                <code>go get -u github.com/caddyserver/xcaddy/cmd/xcaddy</code>
+            </blockquote>
+            <p>Use xcaddy to build Caddy with the ForwardProxy plugin, as modified by the NaiveProxy project, which you just downloaded:</p>
+            <blockquote>
+                <code>~/go/bin/xcaddy build --with github.com/caddyserver/forwardproxy=$PWD/forwardproxy</code>
+            </blockquote>
+            <p>The download and build will take several minutes. The final lines read something like this:</p>
+            <blockquote>
+                <code>2021/06/12 15:45:24 [INFO] exec (timeout=0s): /usr/local/go/bin/go build -o /root/caddy -ldflags -w -s -trimpath</code>
+            </blockquote>
+            <blockquote>
+                <code>2021/06/12 15:49:19 [INFO] Build complete: ./caddy</code>
+            </blockquote>
+            <blockquote>
+                <code>2021/06/12 15:49:19 [INFO] Cleaning up temporary folder: /tmp/buildenv_2021-06-12-1544.050638754</code>
+            </blockquote>
+            <p>Once it has finished, copy the Caddy binary into a more central location:</p>
+            <blockquote>
+                <code>cp caddy /usr/bin</code>
+            </blockquote>
+            <h3><a id="1-8"></a>1.8. Allow Caddy to Bind to Privileged Ports</h3>
+            <p>Allow Caddy to bind to “privileged” ports (i.e. TCP/IP port numbers below 1024):</p>
+            <blockquote>
+                <code>setcap cap_net_bind_service=+ep /usr/bin/caddy</code>
+            </blockquote>
+            <h3><a id="1-9"></a>1.9. Generate Strong Password</h3>
+            <p>Generate a strong password to access your proxy server:</p>
+            <blockquote>
+                <code>cat /dev/urandom | tr -dc a-zA-Z0-9 | head -c32; echo;</code>
+            </blockquote>
+            <p>The example result that we will use in the rest of this tutorial:</p>
+            <blockquote>
+                <code>MFUZ4eMngSRJ9888tvM8S9HjEULm2Ptj</code>
+            </blockquote>
+            <h3><a id="1-10"></a>1.10. Configure Caddy with Forwardproxy</h3>
+            <p>Edit the Caddy configuration JSON file:</p>
+            <blockquote>
+                <code>mkdir /etc/caddy</code>
+            </blockquote>
+            <blockquote>
+                <code>vi /etc/caddy/config.json</code>
+            </blockquote>
+            <p>Use the template below, making these changes:</p>
+            <ul>
+                <li>Replace <code>yourname</code> by your choice of username for NaiveProxy authentication</li>
+                <li>Replace <code>MFUZ4eMngSRJ9888tvM8S9HjEULm2Ptj</code> by your actual password</li>
+                <li>Replace <code>example.com</code> and <code>www.example.com</code> by your domain name and hostname (3 lines affected)</li>
+                <li>Replace <code>youremail@example.com</code> by your actual email address for Let’s Encrypt notifications</li>
+            </ul>
+            <pre>{
+  "admin": {"disabled": true},
+  "logging": {
+    "sink": {"writer": {"output": "discard"}},
+    "logs": {"default": {"writer": {"output": "discard"}}}
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "srv0": {
+          "listen": [":443"],
+          "routes": [{
+            "handle": [{
+              "handler": "forward_proxy",
+              "hide_ip": true,
+              "hide_via": true,
+              "auth_user_deprecated": "yourname",
+              "auth_pass_deprecated": "MFUZ4eMngSRJ9888tvM8S9HjEULm2Ptj",
+              "probe_resistance": {"domain": ""}
+            }]
+          }, {
+            "match": [{"host": ["example.com", "www.example.com"]}],
+            "handle": [{
+              "handler": "file_server",
+              "root": "/var/www/html"
+            }],
+            "terminal": true
+          }],
+          "tls_connection_policies": [{
+            "match": {"sni": ["example.com", "www.example.com"]}
+          }]
+        }
+      }
+    },
+    "tls": {
+      "automation": {
+        "policies": [{
+          "subjects": ["example.com", "www.example.com"],
+          "issuer": {
+            "email": "youremail@example.com",
+            "module": "acme"
+          }
+        }]
+      }
+    }
+  }
+}
+</pre>
+            <p>Write the file to disk, and quit the editor.</p>
+            <h3><a id="1-11"></a>1.11. Create Systemd Service File</h3>
+            <p>Create a systemd service file for Caddy:</p>
+            <blockquote>
+                <code>vi /usr/lib/systemd/system/caddy.service</code>
+            </blockquote>
+            <p>Insert contents like this:</p>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=Caddy<br>
+                Documentation=https://caddyserver.com/docs/<br>
+                After=network.target<br>
+                <br>
+                [Service]<br>
+                ExecStart=/usr/bin/caddy run --config /etc/caddy/config.json<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <p>Write the file to disk, and quit the editor.</p>
+            <h3><a id="1-12"></a>1.12. Run Caddy on Server</h3>
+            <p>Start Caddy with the NaiveProxy version of ForwardProxy:</p>
+            <blockquote>
+                <code>systemctl enable caddy</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start caddy</code>
+            </blockquote>
+            <p>Check that the status is <code>active (running)</code>:</p>
+            <blockquote>
+                <code>systemctl status caddy</code>
+            </blockquote>
+            <p>Check that Caddy is listening on ports <code>80</code> and <code>443</code>:</p>
+            <blockquote>
+                <code>ss -tulpn | grep caddy</code>
+            </blockquote>
+            <p>Exit your SSH session with the server:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <p>You can check that the camouflage website is in place by opening Firefox on your PC and visiting your host, e.g., <code>https://www.example.com</code>.</p>
+            <h2><a id="2"></a>2. Set Up Client</h2>
+            <h3><a id="2-1"></a>2.1. Download NaiveProxy Client</h3>
+            <p>Now go to work on your PC. Open your browser, and visit the <a href="https://github.com/klzgrad/naiveproxy/releases" target="_blank">releases page for NaiveProxy</a>.</p>
+            <p>Download the latest release of the NaiveProxy client. We will use Windows as our example client. For example, at the time of writing the client for Windows is named
+            <code>naiveproxy-v91.0.4472.77-1-win-x64.zip</code>.</p>
+            <p>Extract the zip file.</p><img src="../images/naiveproxy-extracted.png" alt="NaiveProxy files extracted from the zip file">
+            <h3><a id="2-2"></a>2.2. Configure NaiveProxy Client</h3>
+            <p>Edit the configuration file for the NaiveProxy client, which is named <code>config.json</code>:</p>
+            <p>Use the template below, making these changes:</p>
+            <ul>
+                <li>Replace <code>yourname</code> by your choice of username for NaiveProxy authentication</li>
+                <li>Replace <code>MFUZ4eMngSRJ9888tvM8S9HjEULm2Ptj</code> by your actual password</li>
+                <li>Replace <code>www.example.com</code> by your hostname</li>
+            </ul>
+            <blockquote>
+                <code>{<br>
+                "listen": "socks://127.0.0.1:1080",<br>
+                "proxy": "https://yourname:MFUZ4eMngSRJ9888tvM8S9HjEULm2Ptj@www.example.com"<br>
+                }</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="2-3"></a>2.3. Run NaiveProxy</h3>
+            <p>In a Command Prompt window on the client, run the NaiveProxy client with your configuration file:</p>
+            <blockquote>
+                <code>cd Downloads\naiveproxy-v91.0.4472.77-1-win-x64\naiveproxy-v91.0.4472.77-1-win-x64</code>
+            </blockquote>
+            <blockquote>
+                <code>naive config.json</code>
+            </blockquote>
+            <p>Leave the Command Prompt window open, with the NaiveProxy client still running in it. NaiveProxy is listening on port <code>1080</code>.</p>
+            <h3><a id="2-4"></a>2.4. Configure Firefox</h3>
+            <p>Open Firefox. From the hamburger menu, select <strong>Settings</strong> &gt; <strong>General</strong>. Scroll down to <strong>Network Settings</strong>. Click the
+            <strong>Settings</strong> button.</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration</strong>.</li>
+                <li>Enter SOCKS Host <code>127.0.0.1</code>.</li>
+                <li>Enter Port <code>1080</code>.</li>
+                <li>Select <strong>SOCKS v5</strong>.</li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5</strong>.</li>
+                <li>Click <strong>OK</strong>.</li>
+            </ul>
+            <h3><a id="2-5"></a>2.5. End-to-end Test</h3>
+            <p>Visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p>
+            <p>You should see the IP address of your remote server, not your local client.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>Report any NaiveProxy issues on <a href="https://github.com/klzgrad/naiveproxy/issues" target="_blank">GitHub</a>.</p>
+            <p><em>Updated 2021-06-12</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

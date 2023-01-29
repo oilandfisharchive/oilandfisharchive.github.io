@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenVPN + Stunnel</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>OpenVPN + Stunnel</h1>
+            <p>People in not-free countries often have a problem with OpenVPN connections being blocked by government censors. This article describes one possible solution.
+            OpenVPN is tunneled through Stunnel, thus resembling a TLS connection on port <code>443</code>. Whether or not this gets through Deep Packet Inspection (DPI) depends
+            on the sophistication of the DPI. It may work in some countries but not in others. We include server name indicator (SNI) in the TLS to make the connection look a bit
+            more like a real HTTPS connection.</p>
+            <p>The server in this article runs Debian 10 or a recent version of Ubuntu. The same server configuration can handle a client running Linux, Windows, or Android.</p>
+            <h2><a id="1"></a>1. Set Up Server</h2>
+            <h3><a id="1-1"></a>1.1. Open Firewall</h3>
+            <p>There are multiple ways to implement a firewall: nftables, iptables, ufw, and firewalld. The modern way is nftables. However, in a moment we are going to install
+            OpenVPN with a script that uses iptables. Therefore we will use iptables to build our basic firewall. Issue each of these commands in turn:</p>
+            <blockquote>
+                <code>iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access
+            (<code>-s xx.xx.xx.xx/32</code>), then so much the better.</p>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 22 -j ACCEPT</code>
+            </blockquote>
+            <p>Add a rule to open port <code>443</code>, the HTTPS port:</p>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 443 -j ACCEPT</code>
+            </blockquote>
+            <p>Drop all unexpected input:</p>
+            <blockquote>
+                <code>iptables -P INPUT DROP</code>
+            </blockquote>
+            <p>Save the iptables rules so that they persist after reboots:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install iptables-persistent -y</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Implement BBR</h3>
+            <p>Bottleneck Bandwidth and Round-trip propagation time (BBR) is a TCP congestion control algorithm developed at Google. Under certain types of network congestion, it
+            will improve your latency. Implement BBR TCP congestion control on your server with the following commands:</p>
+            <blockquote>
+                <code>cat &gt;&gt; /etc/sysctl.d/50-bbr.conf &lt;&lt;EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>net.core.default_qdisc=fq</code>
+            </blockquote>
+            <blockquote>
+                <code>net.ipv4.tcp_congestion_control=bbr</code>
+            </blockquote>
+            <blockquote>
+                <code>EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/50-bbr.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Download Angristan OpenVPN Install Script</h3>
+            <p>Get the Angristan OpenVPN script from GitHub:</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh</code>
+            </blockquote>
+            <p>Make the script executable:</p>
+            <blockquote>
+                <code>chmod +x openvpn-install.sh</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Run Script and Create Client OVPN File</h3>
+            <p>Run the Angristan OpenVPN script:</p>
+            <blockquote>
+                <code>./openvpn-install.sh</code>
+            </blockquote>
+            <p>You can accept the suggested default answers to most of the questions, but Stunnel will require OpenVPN to use <code>TCP</code> rather than <code>UDP</code>:</p>
+            <ol>
+                <li>IP address should accurately reflect the IP address of your server</li>
+                <li>Port choice should be <code>1194</code> (it will be hidden behind Stunnel anyway)</li>
+                <li>Important: Protocol must be <code>TCP</code> to work with Stunnel</li>
+                <li>For DNS servers, you can choose your favorite, e.g. Cloudflare or Google</li>
+                <li>For enable compression, recommend <code>n</code> for no</li>
+                <li>For customized encryption settings, recommend <code>n</code> for no</li>
+            </ol>
+            <p>After answering all the questions, press any key to continue and run the script. At the end of the installation, you are asked about the first client:</p>
+            <ol>
+                <li>For the first client name, we will put <code>client1</code></li>
+                <li>For the private key file, we will put passwordless</li>
+            </ol>
+            <p>You can check that OpenVPN is <code>active (running)</code> after the script finishes:</p>
+            <blockquote>
+                <code>systemctl status openvpn@server</code>
+            </blockquote>
+            <p>Check also that OpenVPN is listening for <code>TCP</code> input on port <code>1194</code>:</p>
+            <blockquote>
+                <code>ss -tulpn | grep 1194</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Adjust Firewall Rules</h3>
+            <p>If you look at the iptables firewall, you will see that the script has opened port <code>1194</code> to the public:</p>
+            <blockquote>
+                <code>iptables -vnL</code>
+            </blockquote>
+            <p>We want to make the OpenVPN server as invisible as possible. Therefore we will close port <code>1194</code> to the public. In a few minutes, we’ll add Stunnel to
+            handle incoming traffic and pass it to OpenVPN on the <em>loopback</em> interface port <code>1194</code>.</p>
+            <p>Edit the iptables rules that get added when OpenVPN is brought up:</p>
+            <blockquote>
+                <code>vi /etc/iptables/add-openvpn-rules.sh</code>
+            </blockquote>
+            <p>Delete the line that inserts an input rule accepting <code>TCP</code> packets on port <code>1194</code>. Save the file.</p>
+            <p>Edit the iptables rules that get removed when OpenVPN is brought down:</p>
+            <blockquote>
+                <code>vi /etc/iptables/rm-openvpn-rules.sh</code>
+            </blockquote>
+            <p>Delete the line deleting the input rule accepting <code>TCP</code> packets on port <code>1194</code>. Save the file.</p>
+            <p>Make sure that everything still works after you reboot the server:</p>
+            <blockquote>
+                <code>reboot</code>
+            </blockquote>
+            <p>Check the revised iptables rules:</p>
+            <blockquote>
+                <code>iptables -vnL</code>
+            </blockquote>
+            <p>You should see that port <code>1194</code> is no longer open to the public. Traffic that is passed from Stunnel to OpenVPN will still be accepted, since it uses the
+            loopback interface (<code>-i lo</code>), for which we added a special iptables rule at the beginning.</p>
+            <h3><a id="1-6"></a>1.6. Install Stunnel</h3>
+            <p>Install Stunnel version 4 from the repositories:</p>
+            <blockquote>
+                <code>apt install stunnel4 -y</code>
+            </blockquote>
+            <h3><a id="1-7"></a>1.7. Generate Stunnel Server Private Key and Certificate</h3>
+            <p>Issue the following commands in turn to generate a private key and a certificate for the Stunnel server:</p>
+            <blockquote>
+                <code>cd /etc/stunnel</code>
+            </blockquote>
+            <blockquote>
+                <code>openssl genrsa -out key.pem 2048</code>
+            </blockquote>
+            <blockquote>
+                <code>openssl req -new -x509 -key key.pem -out cert.pem -days 3650</code>
+            </blockquote>
+            <p>You can accept or override the identifiers for the certificate, as you prefer:</p>
+            <blockquote>
+                <code>Country Name (2 letter code) [AU]:<br>
+                State or Province Name (full name) [Some-State]:<br>
+                Locality Name (eg, city) []:<br>
+                Organization Name (eg, company) [Internet Widgits Pty Ltd]:<br>
+                Organizational Unit Name (eg, section) []:<br>
+                Common Name (e.g. server FQDN or YOUR name) []:<br>
+                Email Address []:</code>
+            </blockquote>
+            <h3><a id="1-8"></a>1.8. Configure Stunnel</h3>
+            <p>Edit the Stunnel configuration file:</p>
+            <blockquote>
+                <code>vi /etc/stunnel/stunnel.conf</code>
+            </blockquote>
+            <p>Insert these contents. Stunnel will listen on port <code>443</code> and pass traffic to OpenVPN internally on port <code>1194</code>:</p>
+            <blockquote>
+                <code>pid = /var/run/stunnel4/stunnel.pid<br>
+                output = /var/log/stunnel4/stunnel.log<br>
+                setuid = stunnel4<br>
+                setgid = stunnel4<br>
+                [openvpn]<br>
+                cert=/etc/stunnel/cert.pem<br>
+                key=/etc/stunnel/key.pem<br>
+                accept = 0.0.0.0:443<br>
+                connect = 127.0.0.1:1194</code>
+            </blockquote>
+            <p>Write the file to disk. Quit the editor.</p>
+            <h3><a id="1-9"></a>1.9. Enable Automatic Start Up</h3>
+            <p>Edit the defaults file:</p>
+            <blockquote>
+                <code>vi /etc/default/stunnel4</code>
+            </blockquote>
+            <p>Insert a new line:</p>
+            <blockquote>
+                <code>ENABLED=1</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="1-10"></a>1.10. Start Stunnel</h3>
+            <p>Start Stunnel now:</p>
+            <blockquote>
+                <code>stunnel</code>
+            </blockquote>
+            <p>Check that it is active and listening:</p>
+            <blockquote>
+                <code>tail /var/log/stunnel4/stunnel.log</code>
+            </blockquote>
+            <p>You should see a message, <code>Configuration successful</code>. Do some more checks:</p>
+            <blockquote>
+                <code>ps -aux | grep stunnel</code>
+            </blockquote>
+            <blockquote>
+                <code>ss -tulpn | grep 443</code>
+            </blockquote>
+            <p>Server work is done, so exit:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Linux Client</h2>
+            <p>This procedure has been tested with a client running Ubuntu 21.04.</p>
+            <h3><a id="2-1"></a>2.1. Copy Client Configuration File from Server to PC</h3>
+            <p>Assuming that your server has IP address <code>yy.yy.yy.yy</code> and that you named the client file <code>client1.ovpn</code>, copy the OVPN file down from the
+            server to the client like this:</p>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:client1.ovpn ~/Downloads/client1.conf</code>
+            </blockquote>
+            <h3><a id="2-2"></a>2.2. Install Stunnel Client</h3>
+            <p>Install Stunnel version 4 from the repositories:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install stunnel4 -y</code>
+            </blockquote>
+            <h3><a id="2-3"></a>2.3. Configure Stunnel Client</h3>
+            <p>Edit the Stunnel configuration file:</p>
+            <blockquote>
+                <code>sudo vi /etc/stunnel/stunnel.conf</code>
+            </blockquote>
+            <p>Insert these contents, replacing IP address <code>yy.yy.yy.yy</code> by the actual server IP address:</p>
+            <blockquote>
+                <code>output = /var/log/stunnel4/stunnel.log<br>
+                pid = /var/run/stunnel4/stunnel.pid<br>
+                client = yes<br>
+                [openvpn]<br>
+                sni = www.bing.com<br>
+                accept = 127.0.0.1:1194<br>
+                connect = yy.yy.yy.yy:443</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="2-4"></a>2.4. Start Stunnel</h3>
+            <p>Start Stunnel now:</p>
+            <blockquote>
+                <code>sudo stunnel</code>
+            </blockquote>
+            <p>Check that Stunnel is running as expected:</p>
+            <blockquote>
+                <code>sudo tail /var/log/stunnel4/stunnel.log</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ps -aux | grep stunnel</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ss -tulpn | grep 1194</code>
+            </blockquote>
+            <h3><a id="2-5"></a>2.5. Install OpenVPN Client</h3>
+            <p>Install OpenVPN for GNOME and all its dependencies from the repositories:</p>
+            <blockquote>
+                <code>sudo apt install network-manager-openvpn-gnome -y</code>
+            </blockquote>
+            <h3><a id="2-6"></a>2.6. Configure OpenVPN Client</h3>
+            <p>Edit the downloaded OpenVPN client configuration file:</p>
+            <blockquote>
+                <code>vi ~/Downloads/client1.conf</code>
+            </blockquote><img src="../images/os-ubuntu-config.png" alt="Configuring OpenVPN on Ubuntu">
+            <p>Change the remote address to <code>127.0.0.1</code> port <code>1194</code>.</p>
+            <p>Save the file. You can now also close your terminal.</p>
+            <p>From GNOME Settings, go to the <strong>Network</strong> page.</p>
+            <ol>
+                <li>Click the plus sign to add a VPN</li>
+                <li>Select the option <strong>Import from file...</strong></li>
+                <li>Select your downloaded <code>~/Downloads/client1.conf</code> file</li>
+                <li>Click <strong>Add</strong></li>
+            </ol><img src="../images/os-ubuntu-add-vpn.png" alt="Adding an OpenVPN server in Ubuntu">
+            <h3><a id="2-7"></a>2.7. Add Static Route to Server</h3>
+            <p>With OpenVPN and Stunnel running at the same time, we must prevent a routing loop. We do not want traffic for the OpenVPN server to go to the OpenVPN client, then
+            to the Stunnel client, and then back to the OpenVPN client again.</p>
+            <p>On Windows, you can add <code>route yy.yy.yy.yy 255.255.255.255 net_gateway</code> to the OpenVPN client configuration. This does not work on a Linux client running
+            Network Manager due to <a href="https://bugzilla.redhat.com/show_bug.cgi?id=1417169" target="_blank">#1417169</a>. Network Manager for OpenVPN does not support special
+            <code>route</code> keywords such as <code>vpn_gateway</code> or <code>net_gateway</code>.</p>
+            <p>Therefore on a Linux client, we will add a static route at this stage.</p>
+            <p>Determine your default gateway:</p>
+            <blockquote>
+                <code>ip route | grep default</code>
+            </blockquote>
+            <p>Let’s say, for example, that your OpenVPN server is <code>yy.yy.yy.yy</code>, your default gateway is <code>192.168.1.254</code>, and your real interface is
+            <code>ens33</code>. Add a temporary static route:</p>
+            <blockquote>
+                <code>sudo ip route add yy.yy.yy.yy via 192.168.1.254 dev ens33</code>
+            </blockquote>
+            <p>The route will persist until the next reboot (or until you explicitly delete the route).</p>
+            <h3><a id="2-8"></a>2.8. Test End-to-End</h3>
+            <p>In GNOME Network Settings, toggle your newly added VPN connection to the ON position.</p>
+            <p>Open Firefox, and visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p>
+            <p>You should see the IP address of your remote server, not your local client.</p>
+            <h2><a id="3"></a>3. Windows Client</h2>
+            <p>Download the OpenVPN client configuration file with the <code>scp</code> tool that comes with Windows PowerShell, replacing <code>yy.yy.yy.yy</code> by your actual
+            server IP address:</p>
+            <blockquote>
+                <code>scp -P 22 root@yy.yy.yy.yy:client1.ovpn Downloads</code>
+            </blockquote>
+            <p>The <code>client1.ovpn</code> file ends up in your <code>Downloads</code> folder.</p>
+            <p>Download the Stunnel installer for Windows from <a href="https://www.stunnel.org/downloads.html" target="_blank">https://www.stunnel.org/downloads.html</a>. It will
+            have a name such as <code>stunnel-5.59-win64-installer.exe</code>. Run the installer. Fill in your certificate identifying information when prompted.</p>
+            <p>Launch Stunnel from the Stunnel shortcut on your desktop. Right-click on the Stunnel icon in the system tray at the bottom right of your Windows
+            desktop.</p><img src="../images/os-windows-stunnel-menu.png" alt="Stunnel menu in Windows">
+            <p>Select <strong>Edit Configuration.</strong>. Configure Stunnel like this, replacing <code>yy.yy.yy.yy</code> by your actual server IP address:</p>
+            <blockquote>
+                <code>output = stunnel.log<br>
+                client = yes<br>
+                [openvpn]<br>
+                sni = www.bing.com<br>
+                accept = 127.0.0.1:1194<br>
+                connect = yy.yy.yy.yy:443</code>
+            </blockquote>
+            <p>Save the file. Right-click on the Stunnel icon in the system tray. Select <strong>Reload Configuration</strong>. Stunnel is now listening on localhost port
+            <code>1194</code>.</p>
+            <p>Download the OpenVPN installer for Windows from <a href="https://openvpn.net/community-downloads" target="_blank">https://openvpn.net/community-downloads</a>. It
+            will have a name such as <code>OpenVPN-2.5.3-I601-amd64.msi</code>. Run the installer.</p>
+            <p>Edit the downloaded OpenVPN configuration file in Notepad. Edit the <code>remote</code> address to be <code>127.0.0.1</code>, and add a route to the server,
+            replacing <code>yy.yy.yy.yy</code> by your actual server IP address:</p>
+            <blockquote>
+                <code>remote 127.0.0.1 1194<br>
+                route yy.yy.yy.yy 255.255.255.255 net_gateway</code>
+            </blockquote>
+            <p>Save the file. Right-click on the OpenVPN icon in the system tray, and import the revised configuration file. Right-click on the OpenVPN icon in the system tray,
+            and connect.</p><img src="../images/os-windows-openvpn-menu.png" alt="OpenVPN menu in Windows">
+            <p>Test end-to-end by opening a browser and visiting <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see the IP address of your remote
+            server, not your local client.</p>
+            <h2><a id="4"></a>4. Android Client</h2>
+            <p>It should be possible to use an Android client with the apps <strong>SSLDroid</strong> and <strong>OpenVPN for Android</strong>. This has not been tested.</p>
+            <h2><a id="5"></a>5. Get Help and Report Issues</h2>
+            <ul>
+                <li>For OpenVPN questions, post in the <a href="https://forums.openvpn.net/" target="_blank">OpenVPN forum</a>
+                </li>
+                <li>For Stunnel support, see the <a href="https://www.stunnel.org/support.html" target="_blank">Stunnel website</a>
+                </li>
+            </ul>
+            <p><em>Updated 2021-06-25</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

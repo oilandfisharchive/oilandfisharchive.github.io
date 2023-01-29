@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>How to Install, Configure, and Run V2Ray + WebSocket + TLS + CDN</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>How to Install, Configure, and Run V2Ray + WebSocket + TLS + CDN</h1>
+            <p>V2Ray is a censorship circumversion platform that is newer and more powerful than <a href="shadowsocks-libev.html">Shadowsocks</a>. In particular, V2Ray offers the
+            valuable possibility of disguising your proxy server as a web server.</p>
+            <p>Both server and client must have accurate time-of-day clocks for the V2Ray connection to work.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <p>This post will show you three alternative methods of setting up a V2Ray server:</p>
+            <ul>
+                <li>
+                    <a href="#1-1">1.1. Manual Setup</a>
+                </li>
+                <li>
+                    <a href="#1-2">1.2. Scripted Setup Using 233boy Script</a>
+                </li>
+                <li>
+                    <a href="#1-3">1.3. Scripted Setup Using wulabing Script</a>
+                </li>
+            </ul>
+            <h3><a id="1-1"></a>1.1. Manual Setup</h3>
+            <p>Since the principle is to disguise your proxy server as a web server, you will need a domain name as well as your server. Set up at least a DNS <code>A</code>
+            record pointing from your domain name to your server’s IP address.</p>
+            <p>Install a web server. You can use Apache, Nginx, or Caddy. In this example, we will use Nginx. On CentOS:</p>
+            <blockquote>
+                <code>yum install nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nginx</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nginx</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install nginx -y</code>
+            </blockquote>
+            <p>Specify your actual server name. On CentOS, edit <code>/etc/nginx/nginx.conf</code>. On Debian, edit <code>/etc/nginx/sites-available/default</code>. In either
+            case, do <code>systemctl restart nginx</code> after you have finished editing.</p>
+            <p>Add some realistic website content so that even manual inspection will make your server look like a web server. You can search for sample web templates from the
+            Internet. Here is one example. On CentOS:</p>
+            <blockquote>
+                <code>yum install wget zip unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/arcdetri/sample-blog/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>cp -rf sample-blog-master/html/* /usr/share/nginx/html/</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install wget zip unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/arcdetri/sample-blog/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo cp -rf sample-blog-master/html/* /var/www/html/</code>
+            </blockquote>
+            <p>Add a free Let’s Encrypt SSL certificate to your site. There are two common ways to do this:</p>
+            <ul>
+                <li>
+                    <strong>Certbot</strong>, as explained on the <a href="https://certbot.eff.org/" target="_blank">EFF Certbot page</a>. You specify your server software and
+                    operating system on that page to get their recommended instructions.
+                </li>
+                <li>
+                    <strong>Acme.sh</strong>, which is on <a href="https://github.com/acmesh-official/acme.sh" target="_blank">GitHub</a>.
+                </li>
+            </ul>
+            <p>We will give two examples from the <a href="https://certbot.eff.org/" target="_blank">EFF Certbot page</a>. For CentOS 8:</p>
+            <blockquote>
+                <code>yum install epel-release -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install certbot python3-certbot-nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot --nginx</code>
+            </blockquote>
+            <blockquote>
+                <code>echo "0 0,12 * * * root python3 -c 'import random; import time; time.sleep(random.random() * 3600)' &amp;& certbot renew -q" | sudo tee -a /etc/crontab &gt;
+                /dev/null</code>
+            </blockquote>
+            <p>And for Debian 10:</p>
+            <blockquote>
+                <code>apt install certbot python-certbot-nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot --nginx</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot renew --dry-run</code>
+            </blockquote>
+            <p>Once your site is secured by an SSL certificate, add your domain to <a href="https://www.cloudflare.com/" target="_blank">Cloudflare</a>. If you do not have an
+            account, you will be prompted to create one as you add your first domain. Change nameservers to Cloudflare as prompted.</p>
+            <p>Now you have a working web server with content, an SSL certificate, and its IP address hidden behind your Content Distribution Network (CDN).</p>
+            <p>Download and run the V2Ray installation script.</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>bash install-release.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable v2ray</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start v2ray</code>
+            </blockquote>
+            <p>Create <code>/usr/local/etc/v2ray/config.json</code>:</p>
+            <pre>{
+  "log": {
+    "loglevel": "warning",
+    "access": "/var/log/v2ray/access.log", 
+    "error": "/var/log/v2ray/error.log"
+  },
+  "inbounds": [{
+    "port": 10000,
+    "protocol": "vmess",
+    "settings": {
+      "clients": [
+        {
+          "id": "4db99e96-3ee3-419c-b1fb-2e4acc85ad74",
+          "level": 1,
+          "alterId": 64
+        }
+      ]
+    },
+    "streamSettings": {
+      "network": "ws",
+      "wsSettings": {
+        "path": "/8snasdr9"
+      }
+    }
+  }],
+  "outbounds": [{
+    "protocol": "freedom",
+    "settings": {}
+  },{
+    "protocol": "blackhole",
+    "settings": {},
+    "tag": "blocked"
+  }],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "blocked"
+      }
+    ]
+  }
+}
+</pre>
+            <p>Note: The latest version of the V2Ray install from the V2Fly project gives the possibility of splitting the configuration file into multiple files in the same
+            directory:</p>
+            <ul>
+                <li><code>00_log.json</code></li>
+                <li><code>01_api.json</code></li>
+                <li><code>02_dns.json</code></li>
+                <li><code>03_routing.json</code></li>
+                <li><code>04_policy.json</code></li>
+                <li><code>05_inbounds.json</code></li>
+                <li><code>06_outbounds.json</code></li>
+                <li><code>07_transport.json</code></li>
+                <li><code>08_stats.json</code></li>
+                <li><code>09_reverse.json</code></li>
+            </ul>
+            <p>Edit your Nginx configuration file, <code>/etc/nginx/nginx.conf</code> or <code>/etc/nginx/sites-available/default</code>. Make Nginx pass requests for the secret
+            path to V2Ray, which is listening on localhost port 10000.</p>
+            <pre>location /8snasdr9 {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        # Show real IP if you enable V2Ray access log
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+</pre>
+            <p>Restart everything with these new configurations:</p>
+            <blockquote>
+                <code>systemctl restart v2ray</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl restart nginx</code>
+            </blockquote>
+            <p>On CentOS:</p>
+            <blockquote>
+                <code>setsebool -P httpd_can_network_connect 1</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Scripted Setup Using 233boy Script</h3>
+            <p>The 233boy script automates much of the manual process. It uses Caddy rather than Nginx as the web server. As part of the process of configuring Caddy, it will
+            automatically apply for your SSL certificate.</p>
+            <p>Before you begin, get your own domain name and server. Set up at least a DNS <code>A</code> record pointing from your domain name to your server’s IP address.</p>
+            <p>Download and run the 233boy script. You may need to install the <code>curl</code> package before this will work:</p>
+            <blockquote>
+                <code>bash &lt;(curl -s -L https://git.io/v2ray.sh)</code>
+            </blockquote>
+            <p>The first thing the script does is ask you if you want to install or uninstall V2Ray. This posts adds English translations to the prompts:</p>
+            <blockquote>
+                <code>1. 安装 Install<br>
+                2. 卸载 Uninstall</code>
+            </blockquote>
+            <p>Since you want to install, answer <code>1</code>.</p>
+            <p>The script then asks you which of its many options you want:</p>
+            <blockquote>
+                <code>1. TCP<br>
+                2. TCP_HTTP<br>
+                3. WebSocket<br>
+                4. WebSocket + TLS<br>
+                5. HTTP/2<br>
+                6. mKCP<br>
+                7. mKCP_utp<br>
+                8. mKCP_srtp<br>
+                9. mKCP_wechat-video<br>
+                10. mKCP_dtls<br>
+                11. mKCP_wireguard<br>
+                12. QUIC<br>
+                13. QUIC_utp<br>
+                14. QUIC_srtp<br>
+                15. QUIC_wechat-video<br>
+                16. QUIC_dtls<br>
+                17. QUIC_wireguard<br>
+                18. TCP_dynamicPort<br>
+                19. TCP_HTTP_dynamicPort<br>
+                20. WebSocket_dynamicPort<br>
+                21. mKCP_dynamicPort<br>
+                22. mKCP_utp_dynamicPort<br>
+                23. mKCP_srtp_dynamicPort<br>
+                24. mKCP_wechat-video_dynamicPort<br>
+                25. mKCP_dtls_dynamicPort<br>
+                26. mKCP_wireguard_dynamicPort<br>
+                27. QUIC_dynamicPort<br>
+                28. QUIC_utp_dynamicPort<br>
+                29. QUIC_srtp_dynamicPort<br>
+                30. QUIC_wechat-video_dynamicPort<br>
+                31. QUIC_dtls_dynamicPort<br>
+                32. QUIC_wireguard_dynamicPort</code>
+            </blockquote>
+            <p>Choose <code>4</code> for V2Ray + WebSocket + TLS, and press <strong>Enter</strong>.</p>
+            <p>Work your way through the script’s questions.</p>
+            <blockquote>
+                <code>请输入 V2Ray 端口 [1-65535]，不能选择 80 或 443 端口<br>
+                (默认端口: 51055):<br>
+                Please enter V2Ray port [1-65535], port 80 or 443 cannot be selected<br>
+                (Default port: 51055):</code>
+            </blockquote>
+            <p>Recommend you accept the default port. It doesn’t really matter. This port will only be used for internal communication between the web server and V2Ray.</p>
+            <blockquote>
+                <code>请输入一个 正确的域名，一定一定一定要正确，不！能！出！错！<br>
+                (例如：233blog.com):<br>
+                <br>
+                Please enter a correct domain name, it must be correct or else!<br>
+                (For example: 233blog.com):</code>
+            </blockquote>You must enter the correct domain name here, and it must resolve to the correct IP address.
+            <blockquote>
+                <code>请将 www.example.com 解析到: YY.YY.YY.YY<br>
+                请将 www.example.com 解析到: YY.YY.YY.YY<br>
+                请将 www.example.com 解析到: YY.YY.YY.YY<br>
+                (是否已经正确解析: [Y]):<br>
+                (Is it resolved correctly: [Y]):</code>
+            </blockquote>
+            <p>You must be able to put <code>y</code> as your answer to the above.</p>
+            <blockquote>
+                <code>安装 Caddy 来实现 自动配置 TLS<br>
+                如果你已经安装 Nginx 或 Caddy<br>
+                并且..自己能搞定配置 TLS<br>
+                那么就不需要 打开自动配置 TLS<br>
+                (是否自动配置 TLS: [Y/N]):<br>
+                <br>
+                Install Caddy to automatically configure TLS<br>
+                If you have installed Nginx or Caddy<br>
+                And...you can configure TLS by yourself<br>
+                Then there is no need to turn on automatic configuration TLS<br>
+                (Whether to automatically configure TLS: [Y/N]):</code>
+            </blockquote>
+            <p>Recommend you let the script do the work and accept the default of <code>y</code> above.</p>
+            <blockquote>
+                <code>是否开启 网站伪装 和 路径分流 [Y/N]<br>
+                (默认: [N]):<br>
+                Whether to enable website camouflage and path diversion [Y/N]<br>
+                (Default: [N]):</code>
+            </blockquote>
+            <p>Recommend you put <code>y</code> here, so that you do not end up with the default for your secret path name.</p>
+            <blockquote>
+                <code>请输入想要 用来分流的路径 , 例如 /233blog , 那么只需要输入 233blog 即可<br>
+                (默认: [233blog]):<br>
+                <br>
+                Please enter the path you want to use to divert, such as /233blog, then you only need to enter 233blog<br>
+                (Default: [233blog]):</code>
+            </blockquote>
+            <p>Recommend you choose something obscure for a secret path. In our example we will put <code>8snasdr9</code> (with no leading slash).</p>
+            <blockquote>
+                <code>请输入 一个正确的 网址 用来作为 网站的伪装 , 例如 https://liyafly.com<br>
+                举例...你当前的域名是 www.example.com , 伪装的网址的是 https://liyafly.com<br>
+                然后打开你的域名时候...显示出来的内容就是来自 https://liyafly.com 的内容<br>
+                其实就是一个反代...明白就好...<br>
+                如果不能伪装成功...可以使用 v2ray config 修改伪装的网址<br>
+                <br>
+                Please enter a correct URL as a disguise for the website, for example https://liyafly.com<br>
+                For example... your current domain name is www.example.com, and the disguised URL is https://liyafly.com<br>
+                Then when you open your domain name... the content displayed is the content from https://liyafly.com<br>
+                In fact, it is an anti-generation... just understand...<br>
+                If the disguise is not successful...you can use v2ray config to modify the disguised URL</code>
+            </blockquote>
+            <p>Unless you have some better content, just press <strong>Enter</strong> to accept the default content from <code>https://liyafly.com</code>.</p>
+            <blockquote>
+                <code>是否开启广告拦截(会影响性能) [Y/N]<br>
+                (默认 [N]):<br>
+                Whether to enable ad blocking (will affect performance) [Y/N]<br>
+                (Default [N]):</code>
+            </blockquote>
+            <p>Recommend you accept the default of <code>n</code> to improve performance.</p>
+            <blockquote>
+                <code>是否配置 Shadowsocks [Y/N]<br>
+                (默认 [N]):<br>
+                Whether to configure Shadowsocks [Y/N]<br>
+                (Default [N]):</code>
+            </blockquote>
+            <p>Recommend you accept the default of <code>n</code>.</p>
+            <blockquote>
+                <code>....准备安装了咯..看看有毛有配置正确了...<br>
+                ---------- 安装信息 -------------<br>
+                V2Ray 传输协议 = WebSocket + TLS<br>
+                V2Ray 端口 = 51055<br>
+                你的域名 = www.example.com<br>
+                域名解析 = 我确定已经有解析了<br>
+                自动配置 TLS = 打开<br>
+                路径分流 = /8snasdr9<br>
+                是否配置 Shadowsocks = 未配置<br>
+                ---------- END -------------<br>
+                按 Enter 回车键 继续....或按 Ctrl + C 取消.<br>
+                .... Ready to install.. See if you have the correct configuration...<br>
+                ---------- Installation Information -------------<br>
+                V2Ray transmission protocol = WebSocket + TLS<br>
+                V2Ray port = 51055<br>
+                Your domain name = www.example.com<br>
+                Domain name resolution = I am sure it has been resolved<br>
+                Automatic configuration TLS = on<br>
+                Path diversion = /8snasdr9<br>
+                Whether to configure Shadowsocks = not configured<br>
+                ---------- END -------------<br>
+                Press Enter to continue...or press Ctrl + C to cancel.</code>
+            </blockquote>
+            <p>Review the above parameters and press Enter when you are ready to proceed.</p>
+            <p>The script installs and configures the necessary software. At the end of the run, the script redisplays the parameters so you know what to specify on the
+            client.</p>
+            <blockquote>
+                <code>------ V2Ray 配置信息 Config info -------<br>
+                地址 Address = www.example.com<br>
+                端口 Port = 443<br>
+                用户ID User ID / UUID = 82b0de78-10ec-4a8c-95eb-666be06fa6b8<br>
+                额外ID Alter Id = 233<br>
+                传输协议 Network = ws<br>
+                伪装类型 Header type = none<br>
+                伪装域名 Host = www.example.com<br>
+                路径 Path = /8snasdr9<br>
+                TLS Enable TLS = 打开<br>
+                ---------- END -------------<br>
+                提示: 输入 v2ray url 可生成 vmess URL 链接 / 输入 v2ray qr 可生成二维码链接 Tip: Enter v2ray url to generate vmess URL link / enter v2ray qr to generate QR code link</code>
+            </blockquote>
+            <p>As mentioned in the confirmation above, you can enter <code>v2ray url</code> or <code>v2ray qr</code> to retrieve the codes for the client.</p>
+            <p>Recommend you copy the vmess URL to your PC’s clipboard.</p>
+            <p>Type <code>v2ray status</code> to confirm that both V2Ray and Caddy are running as expected:</p>
+            <blockquote>
+                <code>V2Ray 状态: 正在运行 status: running<br>
+                Caddy 状态: 正在运行 status: running</code>
+            </blockquote>
+            <p>You can visit your web server <code>https://www.example.com</code> in a browser to see your camouflage website.</p>
+            <p>Now that everything is in place, you can add your domain name to Cloudflare and change your domain's nameservers to <a href="https://www.cloudflare.com/" target="_blank">Cloudflare</a>’s nameservers.</p>
+            <h3><a id="1-3"></a>1.3. Scripted Setup Using Wulabing Script</h3>
+            <p>The wulabing script performs similar functions to the 233boy script. It uses Nginx as the web server. One important difference is that the wulabing script directly
+            compiles the software from the latest sources.</p>
+            <p>Before you begin, get your own domain name and server. Set up at least a DNS <code>A</code> record pointing from your domain name to your server’s IP address.</p>
+            <p>Download and run the wulabing script. On CentOS, you may need to do <code>yum install wget</code> before this will work.</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/wulabing/V2Ray_ws-tls_bash_onekey/master/install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>bash install.sh</code>
+            </blockquote>
+            <p>The script displays a menu offering the following options. This posts adds English translations to the prompts:</p>
+            <blockquote>
+                <code>---------- 安装向导 Setup Wizard ----------<br>
+                0. 升级 脚本 Upgrade script<br>
+                1. 安装 Install V2Ray (Nginx+ws+tls)<br>
+                2. 安装 Install V2Ray (http/2)<br>
+                3. 升级 Upgrade V2Ray core<br>
+                -------- 配置变更 Config changes ----------<br>
+                4. 变更 Change UUID<br>
+                5. 变更 Change alterid<br>
+                6. 变更 Change port<br>
+                7. 变更 Change TLS 版本 version (仅ws+tls有效)<br>
+                -------- 查看信息 View information --------<br>
+                8. 查看 实时访问日志 View real-time access log<br>
+                9. 查看 实时错误日志 View real-time error log<br>
+                10. 查看 V2Ray 配置信息 View V2Ray config info<br>
+                -------- 其他选项 Other options -----------<br>
+                11. 安装 4合1 bbr 锐速安装脚本 Install BBR<br>
+                12. 安装 MTproxy(支持TLS混淆) Install MTproxy<br>
+                13. 证书 有效期更新 Certificate validity update<br>
+                14. 卸载 Uninstall V2Ray<br>
+                15. 更新 证书crontab计划任务 Update certificate crontab<br>
+                16. 清空 证书遗留文件 Clear remaining certificate files<br>
+                17. 退出 Exit<br>
+                <br>
+                请输入数字： Please enter the number:</code>
+            </blockquote>
+            <p>Choose option <code>1</code> to install V2Ray with Nginx + WebSocket (WS) + TLS.</p>
+            <p>After doing some checks, the script asks you some more questions.</p>
+            <blockquote>
+                <code>请确认时间是否准确,误差范围±3分钟(Y/N)<br>
+                Please confirm that the time is accurate; the error range is ±3 minutes (Y/N)</code>
+            </blockquote>
+            <p>Recommend you check the server time is correct then put <code>y</code> for yes.</p>
+            <p>The script installs some more packages.</p>
+            <blockquote>
+                <code>请输入你的域名信息(eg:www.wulabing.com):<br>
+                Please enter your domain information (e.g. www.wulabing.com):</code>
+            </blockquote>
+            <p>Put your accurate domain name for the server, e.g. <code>www.example.com</code></p>
+            <blockquote>
+                <code>请输入连接端口（default:443）:<br>
+                Please enter the connection port (default 443):</code>
+            </blockquote>
+            <p>Recommend you use the default port <code>443</code>.</p>
+            <blockquote>
+                <code>请输入alterID（default:2 仅允许填数字）:<br>
+                Please enter alterID (default 2, must be numeric):</code>
+            </blockquote>
+            <p>Recommend you use the default of 2.</p>
+            <p>The script downloads the latest source for Nginx, OpenSSL, and V2Ray. It then compiles everything directly from the source. This takes 10–20 minutes.</p>
+            <blockquote>
+                <code>请选择生成的链接种类<br>
+                Please select the generated link type<br>
+                1: V2RayNG/V2RayN<br>
+                2: quantumult</code>
+            </blockquote>
+            <p>Recommend you choose according to which V2Ray client you will use. We will choose <code>1</code>.</p>
+            <blockquote>
+                <code>请选择支持的 TLS 版本（default:3）:<br>
+                请注意,如果你使用 Quantaumlt X / 路由器 / 旧版 Shadowrocket / 低于 4.18.1 版本的 V2ray core 请选择 兼容模式<br>
+                Please select a supported TLS version (default 3):<br>
+                Please note that if you use Quantaumlt X / Router / Legacy Shadowrocket / V2ray core lower than 4.18.1 please select compatibility mode<br>
+                1: TLS1.1 TLS1.2 and TLS1.3（兼容模式）<br>
+                2: TLS1.2 and TLS1.3 (兼容模式)<br>
+                3: TLS1.3 only</code>
+            </blockquote>
+            <p>Recommend you choose option <code>2</code>, TLS 1.2 and TLS 1.3.</p>
+            <p>At the end of the script’s run, it displays the URL import link. This is the vmess URL used by many V2Ray clients. If you lose the vmess URL, you can redisplay it
+            like this:</p>
+            <blockquote>
+                <code>cat ~/v2ray_info.inf</code>
+            </blockquote>
+            <p>Recommend you copy the vmess URL to your PC’s clipboard.</p>
+            <p>You can visit your web server <code>https://www.example.com</code> in a browser to see your camouflage website.</p>
+            <p>Now that everything is in place, you can add your domain name to Cloudflare and change your domain's nameservers to <a href="https://www.cloudflare.com/" target="_blank">Cloudflare</a>’s nameservers.</p>
+            <h2><a id="2"></a>2. Client</h2>
+            <p>We will consider five platforms for V2Ray clients:</p>
+            <ul>
+                <li>
+                    <a href="#2-1">2.1. Windows</a>
+                </li>
+                <li>
+                    <a href="#2-2">2.2. Linux</a>
+                </li>
+                <li>
+                    <a href="#2-3">2.3. macOS</a>
+                </li>
+                <li>
+                    <a href="#2-4">2.4. Android</a>
+                </li>
+                <li>
+                    <a href="#2-5">2.5. iOS</a>
+                </li>
+            </ul>
+            <p>For a fuller list of all possible clients, consult the <a href="https://www.v2ray.com/en/awesome/tools.html" target="_blank">V2Ray website</a>.</p>
+            <h3><a id="2-1"></a>2.1. Windows</h3>
+            <p>We will use V2RayN, the graphical user interface for V2Ray on the Windows platform.</p>
+            <p>Open a browser and visit <a href="https://github.com/2dust/v2rayN/releases" target="_blank">GitHub</a>. Download <code>v2rayN-Core.zip</code> for the latest
+            release. After you’ve downloaded <code>v2rayN-Core.zip</code>, unzip the zip file.</p>
+            <p>Double-click <code>v2rayN.exe</code> to launch V2RayN. The first time you run the program, you may get a warning from Windows Defender SmartScreen to say Windows
+            protected your PC. Click <strong>More info</strong>, then click <strong>Run anyway</strong>.</p>
+            <p>The V2RayN icon appears in the system tray toward the bottom right of your Windows desktop. Click the V2RayN icon in the system tray to bring up the V2RayN
+            interface.</p>
+            <p>Under the <strong>Help</strong> button (the question mark icon), select <strong>语言-[中文简体]</strong> for simplified Chinese, or <strong>Language-[English]</strong>
+            for English.</p>
+            <p>Restart V2RayN to see the interface in the new language.</p>
+            <p>There are several alternative ways to add a server. A couple of common alternatives:</p>
+            <ul>
+                <li>If you have not already done so, copy the vmess URL to your Windows clipboard. Paste it into V2RayN with the menu option <strong>Servers</strong> &gt;
+                <strong>Import bulk URLs from clipboard</strong>.</li>
+                <li>Manually add the parameters under <strong>Servers</strong> &gt; <strong>Add [VMess] server</strong>.</li>
+            </ul>
+            <p>Select your chosen server, and press <strong>Enter</strong> to connect to it.</p><img src="../images/v2rayn-windows.png" alt="V2RayN panel on Windows">
+            <p>After the connection is made, close the V2RayN panel. V2RayN continues to run and is accessible via its icon in the system tray.</p>
+            <p>Now that your V2Ray client is connected to the server, configure your browser to send traffic to the V2Ray client.</p>
+            <p>In Firefox, click the hamburger menu, then select <strong>Options</strong>. Select the <strong>General</strong> tab. Scroll down to the bottom to the heading
+            <strong>Network Settings</strong>. Click the <strong>Settings</strong> button.</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration.</strong></li>
+                <li>Fill in <code>127.0.0.1</code> in SOCKS Host.</li>
+                <li>Fill in <code>10808</code> in the Port. <em>Note that V2RayN uses port 10808 in contrast to the more common port 1080 for the local proxy.</em></li>
+                <li>Select <strong>SOCKS v5.</strong></li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5.</strong></li>
+            </ul>
+            <p>In Chrome, you can do the same thing by installing the SwitchyOmega extension and configuring it to use the SOCKS5 proxy on <code>127.0.0.1</code> port
+            <code>10808</code>.</p>
+            <p>Your browser is now configured to use the V2Ray client and the client is in turn connected to your V2Ray server. Your browsing requests and responses are being
+            passed, totally encrypted, via the remote V2Ray server.</p>
+            <p>Check the end-to-end functionality to confirm that V2RayN and Firefox/Chrome are configured correctly. With V2RayN still running, and Firefox/Chrome proxied, visit
+            one or more of these sites:</p>
+            <ul>
+                <li>
+                    <a href="https://www.iplocation.net/" target="_blank">IP Location</a>
+                </li>
+                <li>
+                    <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>
+                </li>
+                <li>
+                    <a href="https://www.ipip.net/" target="_blank">IP IP</a>
+                </li>
+            </ul>
+            <p>In all cases, you should see the IP address of the server, not your local client.</p>
+            <h3><a id="2-2"></a>2.2. Linux</h3>
+            <p>Open Firefox. Download the latest V2Ray for 64-bit Linux from <a href="https://github.com/v2ray/v2ray-core/releases" target="_blank">GitHub</a>. The file to
+            download for a 64-bit PC running Linux is <code>v2ray-linux-64.zip</code>. Unzip <code>v2ray-linux-64.zip</code>.</p>
+            <p>In the terminal or in a text editor, edit the V2Ray configuration file, which is <code>~/Downloads/v2ray-linux-64/config.json</code>.</p>
+            <p>Insert the template below, substituting in your actual values for the placeholders.</p>
+            <pre>{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [{
+    "port": 1080,
+    "listen": "127.0.0.1",
+    "tag": "socks-inbound",
+    "protocol": "socks",
+    "settings": {
+      "auth": "noauth",
+      "udp": false,
+      "ip": "127.0.0.1"
+    },
+    "sniffing": {
+      "enabled": true,
+      "destOverride": ["http", "tls"]
+    }
+  }],
+  "outbounds": [{
+    "protocol": "vmess",
+    "settings": {
+      "vnext": [{
+        "address": "YY.YY.YY.YY", 
+        "port": 443,
+        "users": [
+          { "id": "82b0de78-10ec-4a8c-95eb-666be06fa6b8",
+            "alterId": 233 }
+        ]
+      }]
+    },
+    "streamSettings": {
+      "network": "ws",
+      "security": "tls",
+      "tlsSettings": {
+        "allowInsecure": false,
+        "serverName": "www.example.com"
+      },
+      "wsSettings": {
+        "path": "/8snasdr9",
+        "headers": {
+          "Host": "www.example.com"
+        }
+      }
+    }
+  },{
+    "protocol": "freedom",
+    "settings": {},
+    "tag": "direct"
+  },{
+    "protocol": "blackhole",
+    "settings": {},
+    "tag": "blocked"
+  }],
+  "routing": {
+    "domainStrategy": "IPOnDemand",
+    "rules":[
+      {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "blocked"
+      },
+      {
+        "type": "field",
+        "domain": ["geosite:category-ads"],
+        "outboundTag": "blocked"
+      }
+    ]
+  },
+  "dns": {
+    "hosts": {
+      "domain:v2ray.com": "www.vicemc.net",
+      "domain:github.io": "pages.github.com",
+      "domain:wikipedia.org": "www.wikimedia.org",
+      "domain:shadowsocks.org": "electronicsrealm.com"
+    },
+    "servers": [
+      "1.1.1.1",
+      {
+        "address": "114.114.114.114",
+        "port": 53,
+        "domains": [
+          "geosite:cn"
+        ]
+      },
+      "8.8.8.8",
+      "localhost"
+    ]
+  },
+  "policy": {
+    "levels": {
+      "0": {
+        "uplinkOnly": 0,
+        "downlinkOnly": 0
+      }
+    },
+    "system": {
+      "statsInboundUplink": false,
+      "statsInboundDownlink": false,
+      "statsOutboundUplink": false,
+      "statsOutboundDownlink": false
+    }
+  },
+  "other": {}
+}
+</pre>
+            <p>Save the file. In your terminal emulator, start the V2Ray client running:</p>
+            <blockquote>
+                <code>cd ~/Downloads/v2ray-linux-64</code>
+            </blockquote>
+            <blockquote>
+                <code>./v2ray -config=config.json</code>
+            </blockquote>
+            <p>Leave the terminal open, with V2Ray running in it.</p>
+            <p>Open Firefox. From the hamburger menu, select <strong>Preferences</strong>. In the <strong>Network Settings</strong> section, click <strong>Settings</strong>. Set
+            the network settings as follows:</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration.</strong></li>
+                <li>Fill in <code>127.0.0.1</code> in SOCKS Host.</li>
+                <li>Fill in <code>1080</code> in the Port.</li>
+                <li>Select <strong>SOCKS v5.</strong></li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5.</strong></li>
+            </ul>
+            <p>Click OK. Firefox now sends requests to the V2Ray client, which sends them to the V2Ray server. Do an end-to end test by visiting a site such as <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p>
+            <h3><a id="2-3"></a>2.3. macOS</h3>
+            <p>Download the latest release of V2RayX from <a href="https://github.com/Cenmrev/V2RayX/releases" target="_blank">GitHub</a>. The file to download is named
+            <code>V2RayX.app.zip</code>.</p>
+            <p>Launch V2RayX. Give it the requested permissons.</p>
+            <p>The V2RayX icon appears in the menu bar toward the top right of your screen. Click it to bring up the menu options.</p>
+            <p>Set <strong>Global Mode</strong>.</p>
+            <p>Click <strong>Configure</strong>. Click the plus sign (add) button, and enter the parameters for your server:</p>
+            <ul>
+                <li>Address (e.g. <code>YY.YY.YY.YY</code>)</li>
+                <li>Port (<code>443</code> in our example)</li>
+                <li>User Id (e.g. <code>82b0de78-10ec-4a8c-95eb-666be06fa6b8</code>)</li>
+                <li>Alter ID (e.g. <code>233</code>)</li>
+                <li>Security (e.g. <code>default</code>)</li>
+                <li>Network (e.g. <code>ws</code>)</li>
+                <li>Transport settings
+                    <ul>
+                        <li>WebSocket (e.g. path <code>/8snasdr9</code>, <code>"Host": "www.example.com"</code>)</li>
+                        <li>TLS (e.g. <strong>Use TLS</strong>, TLS server name <code>www.example.com</code>)</li>
+                    </ul>
+                </li>
+            </ul>
+            <p>Click the V2RayX icon in the menu bar, and select the added server under <strong>Servers</strong>.</p>
+            <p>Click the V2RayX icon again, and click <strong>Load core</strong>. The V2RayX icon turns black instead of being grayed out.</p>
+            <p>Do an end-to end test by visiting a site such as <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p>
+            <h3><a id="2-4"></a>2.4. Android</h3>
+            <p>Install V2RayNG from either <a href="https://play.google.com/store/apps/details?id=com.v2ray.ang" target="_blank">Google Play</a> or <a href="https://github.com/2dust/v2rayNG/releases" target="_blank">GitHub</a>. Alternatively, install BifrostV from <a href="https://play.google.com/store/apps/details?id=com.github.dawndiy.bifrostv" target="_blank">Google Play</a>.</p>
+            <p>Both clients allow you to add servers manually, from vmess URLs, or by scanning a QR code. On Android, the clients act more like VPNs, so there is no need to proxy
+            the browser.</p>
+            <p>Note that we do not generally recommend mobile computing in environments where your security is threatened.</p>
+            <h3><a id="2-5"></a>2.5. iOS</h3>
+            <p>There are no free clients for iOS. Look in the iOS App Store for <a href="https://apps.apple.com/us/app/shadowrocket/id932747118" target="_blank">Shadowrocket</a>.</p>
+            <p>Note that we do not generally recommend mobile computing in environments where your security is threatened.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>If you have a problem, SSH into your server to take a look at the logs. To view the V2Ray error log, enter the command:</p>
+            <blockquote>
+                <code>tail /var/log/v2ray/error.log</code>
+            </blockquote>
+            <p>To view the Nginx error log, enter the command:</p>
+            <blockquote>
+                <code>tail /etc/nginx/logs/error.log</code>
+            </blockquote>
+            <p>If you have informal questions about V2Ray, you can ask on social media platforms such as <a href="https://www.reddit.com/r/dumbclub" target="_blank">Reddit</a>.</p>
+            <p>If you discover a legitimate issue with V2Ray, report it on the official GitHub issues page for the software you are using:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/v2ray/v2ray-core/issues" target="_blank">V2Ray</a>
+                </li>
+                <li>
+                    <a href="https://github.com/2dust/v2rayN/issues" target="_blank">V2RayN</a>
+                </li>
+                <li>
+                    <a href="https://github.com/2dust/v2rayNG/issues" target="_blank">V2RayNG</a>
+                </li>
+                <li>
+                    <a href="https://github.com/Cenmrev/V2RayX/issues" target="_blank">V2RayX</a>
+                </li>
+            </ul>
+            <h2>下载</h2>
+            <h3>东京数据中心</h3>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E4%BF%A1%E4%BB%B0%E7%9A%84%E6%A0%B9%E5%9F%BA.pdf" rel="nofollow">叶光明-信仰的根基.pdf</a> 2.2 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E4%BF%A1%E5%BF%83%E4%B9%8B%E9%81%93.pdf" rel="nofollow">叶光明-信心之道.pdf</a> 1.4 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%88%A4%E6%96%AD%E4%B9%8B%E9%81%93.pdf" rel="nofollow">叶光明-判断之道.pdf</a> 1.2 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%8D%81%E5%AD%97%E6%9E%B6%E4%B8%8A%E7%9A%84%E4%BA%A4%E6%8D%A2.pdf" rel="nofollow">叶光明-十字架上的交换.pdf</a> 944.5 kB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%9C%A3%E7%BB%8F%E8%87%AA%E4%BF%AE%E8%AF%BE%E7%A8%8B.pdf" rel="nofollow">叶光明-圣经自修课程.pdf</a> 1.6 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%9C%A8%E4%BD%A0%E9%87%8C%E9%9D%A2%E7%9A%84%E5%9C%A3%E7%81%B5.pdf" rel="nofollow">叶光明-在你里面的圣灵.pdf</a> 1.1 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%A4%AB%E7%88%B6%E4%BD%95%E6%B1%82.pdf" rel="nofollow">叶光明-夫父何求.pdf</a> 1.5 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%AD%A4%E5%84%BF%E5%AF%A1%E5%A6%87.pdf" rel="nofollow">叶光明-孤儿寡妇.pdf</a> 609.2 kB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E6%88%91%E5%8E%9F%E8%B0%85.pdf" rel="nofollow">叶光明-我原谅.pdf</a> 593.1 kB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E7%A5%9E%E6%98%AF%E5%AA%92%E4%BA%BA.pdf" rel="nofollow">叶光明-神是媒人.pdf</a> 1.9 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince1.mp3" rel="nofollow">叶光明derekprince1.mp3</a> 50.1
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince2.mp3" rel="nofollow">叶光明derekprince2.mp3</a> 52.5
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince3.mp3" rel="nofollow">叶光明derekprince3.mp3</a> 51.8
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince4.mp3" rel="nofollow">叶光明derekprince4.mp3</a> 52.4
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince5.mp3" rel="nofollow">叶光明derekprince5.mp3</a> 52.9
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince6.mp3" rel="nofollow">叶光明derekprince6.mp3</a> 52.7
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince7.mp3" rel="nofollow">叶光明derekprince7.mp3</a> 51.9
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince8.mp3" rel="nofollow">叶光明derekprince8.mp3</a> 52.2
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince9.mp3" rel="nofollow">叶光明derekprince9.mp3</a> 52.6
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince10.mp3" rel="nofollow">叶光明derekprince10.mp3</a>
+            51.8 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E8%81%96%E7%B6%93-cmn-cu89s.epub" rel="nofollow">聖經-cmn-cu89s.epub</a> 1.8 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E8%81%96%E7%B6%93-cmn-ncvs.epub" rel="nofollow">聖經-cmn-ncvs.epub</a> 1.7 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E8%81%96%E7%B6%93-CNET_S.epub" rel="nofollow">聖經-CNET_S.epub</a> 7.2 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E8%81%96%E7%B6%93-CUV-S.epub" rel="nofollow">聖經-CUV-S.epub</a> 2.4 MB</p>
+            <h3>香港数据中心</h3>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E4%BF%A1%E4%BB%B0%E7%9A%84%E6%A0%B9%E5%9F%BA.pdf" rel="nofollow">叶光明-信仰的根基.pdf</a> 2.2
+            MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E4%BF%A1%E5%BF%83%E4%B9%8B%E9%81%93.pdf" rel="nofollow">叶光明-信心之道.pdf</a> 1.4 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%88%A4%E6%96%AD%E4%B9%8B%E9%81%93.pdf" rel="nofollow">叶光明-判断之道.pdf</a> 1.2 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%8D%81%E5%AD%97%E6%9E%B6%E4%B8%8A%E7%9A%84%E4%BA%A4%E6%8D%A2.pdf" rel="nofollow">叶光明-十字架上的交换.pdf</a> 944.5 kB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%9C%A3%E7%BB%8F%E8%87%AA%E4%BF%AE%E8%AF%BE%E7%A8%8B.pdf" rel="nofollow">叶光明-圣经自修课程.pdf</a> 1.6 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%9C%A8%E4%BD%A0%E9%87%8C%E9%9D%A2%E7%9A%84%E5%9C%A3%E7%81%B5.pdf" rel="nofollow">叶光明-在你里面的圣灵.pdf</a> 1.1 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%A4%AB%E7%88%B6%E4%BD%95%E6%B1%82.pdf" rel="nofollow">叶光明-夫父何求.pdf</a> 1.5 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%AD%A4%E5%84%BF%E5%AF%A1%E5%A6%87.pdf" rel="nofollow">叶光明-孤儿寡妇.pdf</a> 609.2 kB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E6%88%91%E5%8E%9F%E8%B0%85.pdf" rel="nofollow">叶光明-我原谅.pdf</a> 593.1 kB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E7%A5%9E%E6%98%AF%E5%AA%92%E4%BA%BA.pdf" rel="nofollow">叶光明-神是媒人.pdf</a> 1.9 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince1.mp3" rel="nofollow">叶光明derekprince1.mp3</a> 50.1 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince2.mp3" rel="nofollow">叶光明derekprince2.mp3</a> 52.5 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince3.mp3" rel="nofollow">叶光明derekprince3.mp3</a> 51.8 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince4.mp3" rel="nofollow">叶光明derekprince4.mp3</a> 52.4 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince5.mp3" rel="nofollow">叶光明derekprince5.mp3</a> 52.9 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince6.mp3" rel="nofollow">叶光明derekprince6.mp3</a> 52.7 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince7.mp3" rel="nofollow">叶光明derekprince7.mp3</a> 51.9 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince8.mp3" rel="nofollow">叶光明derekprince8.mp3</a> 52.2 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince9.mp3" rel="nofollow">叶光明derekprince9.mp3</a> 52.6 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince10.mp3" rel="nofollow">叶光明derekprince10.mp3</a> 51.8 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E8%81%96%E7%B6%93-cmn-cu89s.epub" rel="nofollow">聖經-cmn-cu89s.epub</a> 1.8 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E8%81%96%E7%B6%93-cmn-ncvs.epub" rel="nofollow">聖經-cmn-ncvs.epub</a> 1.7 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E8%81%96%E7%B6%93-CNET_S.epub" rel="nofollow">聖經-CNET_S.epub</a> 7.2 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E8%81%96%E7%B6%93-CUV-S.epub" rel="nofollow">聖經-CUV-S.epub</a> 2.4 MB</p>
+            <p><em>Updated 2021-07-22</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shadowsocks-Rust on Linux Server and Windows Client</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Shadowsocks-Rust on Linux Server and Windows Client</h1>
+            <p>Shadowsocks is an important tool for censorship circumvention. The original Shadowsocks was written in Python. <a href="shadowsocks-libev.html">Shadowsocks-Libev</a> was a rewrite in pure C which aimed to keep resource usage as low as possible. However, Shadowsocks-Libev is now
+            receiving bug fixes only.</p>
+            <p>New development takes place in Shadowsocks-Rust. This is a port of Shadowsocks to Rust, a fast and memory-efficient language designed to power performance-critical
+            services.</p>
+            <p>The server installation procedure on this page was tested with a virtual private server (VPS) running Ubuntu 21.04, so the process will be similar on recent
+            versions of Debian.</p>
+            <p>We give instructions for the example of a Windows client, although clients for other platforms are also available.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Generate Port Number and Password</h3>
+            <p>You will need an unusual port number and a strong password for your Shadowsocks server. First generate a random port number like this:</p>
+            <blockquote>
+                <code>echo $((1024 + $RANDOM))</code>
+            </blockquote>
+            <p>The shell function RANDOM gives you a pseudo-random integer between 0 and 32767, so after evaluating the arithmetical expression, you will end up with a port number
+            between 1024 and 33791. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>21429</code>
+            </blockquote>
+            <p>Also generate a random password:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>The <code>openssl rand -base64</code> function gives you a random number, expressed in base-64 notation. Because of the argument <code>24</code>, it will be based
+            on 24 bytes or 192 bits. The result will have 32 base-64 characters. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>Qi0n04pcO38SFROxnIspyE0WRwwMjVEf</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Open Firewall</h3>
+            <p>A server firewall is recommended but optional. There are multiple ways to implement a firewall on a Debian/Ubuntu server: nftables, iptables, ufw, and firewalld. We
+            will use nftables in our examples, but you can use another method if you prefer.</p>
+            <p>SSH into your server as <code>root</code>. Issue each of the following commands in turn to install and start nftables:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>Configure the firewall to accept related traffic and internal traffic on the loopback interface:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <p>Configure the firewall to accept <code>ping</code> requests so that you can test latency:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol icmp icmp type echo-request counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip6 nexthdr icmpv6 icmpv6 type echo-request counter accept</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better. For example, if you always connect to your server from source IP address <code>XX.XX.XX.XX</code>:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 ip saddr XX.XX.XX.XX/32 counter accept</code>
+            </blockquote>
+            <p>If you cannot restrict the port <code>22</code> rule, then you will have to open the port to the whole world instead:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 counter accept</code>
+            </blockquote>
+            <p>Open the server for Shadowsocks-Rust TCP input on your chosen port:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 21429 counter accept</code>
+            </blockquote>
+            <p>Drop all unexpected input:</p>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Save the rules:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install Shadowsocks-Rust Binary</h3>
+            <p>Open a browser on your workstation. Determine the latest release from <a href="https://github.com/shadowsocks/shadowsocks-rust/releases" target="_blank">https://github.com/shadowsocks/shadowsocks-rust/releases</a>. At the time of writing it is release 1.11.1. We will use <code>v1.11.1</code> in our example
+            commands. You may need to change this if a later release is available when you run this process.</p>
+            <p>In your SSH session with the server, download the compressed archive containing the release’s binaries for 64-bit Linux:</p>
+            <blockquote>
+                <code>wget https://github.com/shadowsocks/shadowsocks-rust/releases/download/v1.11.1/shadowsocks-v1.11.1.x86_64-unknown-linux-gnu.tar.xz</code>
+            </blockquote>
+            <p>Extract the binaries from the compressed archive:</p>
+            <blockquote>
+                <code>tar -xf shadowsocks-v1.11.1.x86_64-unknown-linux-gnu.tar.xz</code>
+            </blockquote>
+            <p>Copy the Shadowsocks server binary into <code>/usr/local/bin</code>:</p>
+            <blockquote>
+                <code>cp ssserver /usr/local/bin</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Configure Shadowsocks Server</h3>
+            <p>Create a file <code>/etc/shadowsocks-rust.json</code> using your favorite editor. We will use the <code>vi</code> editor as an example.</p>
+            <blockquote>
+                <code>vi /etc/shadowsocks-rust.json</code>
+            </blockquote>
+            <p>Insert the following template:</p>
+            <pre>{
+   "server": "0.0.0.0",
+   "server_port": 21429,
+   "password": "Qi0n04pcO38SFROxnIspyE0WRwwMjVEf",
+   "timeout": 300,
+   "method": "chacha20-ietf-poly1305",
+   "mode": "tcp_only",
+   "fast_open": false
+}
+</pre>
+            <p>Make appropriate changes to the template:</p>
+            <ul>
+                <li>Change the server port to your preferred value</li>
+                <li>Change the password to your preferred value</li>
+                <li>Optionally change the encryption method, remembering to use an <a href="https://shadowsocks.org/en/wiki/AEAD-Ciphers.html" target="_blank">AEAD cipher</a>
+                </li>
+            </ul>
+            <p>Write the JSON file to disk, and quit the editor.</p>
+            <h3><a id="1-5"></a>1.5. Create SystemD Service File</h3>
+            <p>Create a file <code>/usr/lib/systemd/system/shadowsocks-rust.service</code> using your favorite editor. We will use the <code>vi</code> editor as an example.</p>
+            <blockquote>
+                <code>vi /usr/lib/systemd/system/shadowsocks-rust.service</code>
+            </blockquote>
+            <p>Insert the following template:</p>
+            <pre>[Unit]
+Description=shadowsocks-rust service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/ssserver -c /etc/shadowsocks-rust.json
+ExecStop=/usr/bin/killall ssserver
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=ssserver
+User=nobody
+Group=nogroup
+
+[Install]
+WantedBy=multi-user.target
+</pre>
+            <p>Write the service file to disk, and quit the editor.</p>
+            <h3><a id="1-6"></a>1.6. Start Shadowsocks-Rust Server</h3>
+            <p>Start Shadowsocks-Rust after every reboot, and also start it right now:</p>
+            <blockquote>
+                <code>systemctl enable shadowsocks-rust</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start shadowsocks-rust</code>
+            </blockquote>
+            <p>Check that Shadowsocks-Rust is active and running:</p>
+            <blockquote>
+                <code>systemctl status shadowsocks-rust</code>
+            </blockquote>
+            <p>Check that Shadowsocks-Rust is listening on the expected port, which in our example is port <code>21429</code>:</p>
+            <blockquote>
+                <code>ss -tulpn | grep 21429</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Clients</h2>
+            <h3><a id="2-1"></a>2.1. Client Availability</h3>
+            <p>Shadowsocks clients are available for Linux, Windows, macOS, Android, iOS, and OpenWRT. The <a href="https://shadowsocks.org/en/download/clients.html" target="_blank">Shadowsocks clients page</a> provides an overview.</p>
+            <p>We will use Windows in the examples that follow. You can consult the Shadowsocks clients page for information on clients on other platforms.</p>
+            <h3><a id="2-2"></a>2.2. Windows C# GUI Client</h3>
+            <p>For simple cases, you can use the old C# GUI client for Windows. Download and unzip the Windows client from <a href="https://github.com/shadowsocks/shadowsocks-windows/releases" target="_blank">GitHub</a>. At the time of writing, this is <code>Shadowsocks-4.4.0.185.zip</code>.</p>
+            <p>Also download the corresponding hash file. At the time of writing, this is <code>Shadowsocks-4.4.0.185.zip.hash</code>. Open the hash file in a text editor.</p>
+            <p>In Windows PowerShell on your PC, issue the command:</p>
+            <blockquote>
+                <code>Get-FileHash -Algorithm SHA512 -Path Downloads\Shadowsocks-4.4.0.185.zip</code>
+            </blockquote>
+            <p>Make sure that the displayed hash for the <code>zip</code> file matches the expected value in the <code>zip.hash</code> file.</p>
+            <p>Once you have verified the file hash, unzip the zip file.</p>
+            <p>Launch the program <code>Shadowsocks.exe</code>. If Windows Defender SmartScreen prevents it from running, then click <strong>More info</strong> and <strong>Run
+            anyway</strong>.</p>
+            <p>Enter details which match those of the server, and click <strong>Apply</strong>. The screenshot below gives an example.</p><img src=
+            "../images/shadowsocks-gui-windows.png" alt="Shadowsocks C# GUI server editing on Windows">
+            <p>Click <strong>OK</strong>. The Shadowsocks for Windows C# GUI client continues to run in the system tray. The is the area on the right side of the taskbar, toward
+            the bottom right of your Windows desktop. The Shadowsocks icon looks like a paper airplane. Right-click on the Shadowsocks icon to bring up the context menu. The
+            following options appear:</p>
+            <ul>
+                <li>System Proxy (Disable, PAC, Global)</li>
+                <li>Servers (Load balance, High availability, Choose by statistics, Server selection, Edit servers, Statistics config, Share server config, Scan QR code from
+                screen, import URL from clipboard</li>
+                <li>PAC (Local PAC, Online PAC, Edit local PAC file, Update local PAC from GFW list, Edit user rule for GFW list, Secure local PAC, Copy local PAC URL, Edit online
+                PAC URL</li>
+                <li>Forward proxy...</li>
+                <li>Online config...</li>
+                <li>Start on Boot</li>
+                <li>Associate ss:// Links</li>
+                <li>Allow other Devices to connect</li>
+                <li>Edit Hotkeys...</li>
+                <li>Help (Show logs, Verbose logging, Show plugin output, Write translation template, Update, About</li>
+                <li>Quit</li>
+            </ul><img src="../images/shadowsocks-gui-menu.png" alt="Shadowsocks C# GUI context menu on Windows">
+            <p>Select <strong>System Proxy</strong> and set the value to <strong>Global</strong>.</p>
+            <p>Confirm that the system proxy is on by going to <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt; <strong>Proxy</strong> &gt; <strong>Manual
+            proxy setup</strong>. It should show that the proxy server toggle is on, for address <code>http://localhost</code> and port <code>1080</code>.</p>
+            <p>Check the end-to-end functionality to confirm that Shadowsocks C# GUI and your system proxy settings are configured correctly. Visit one or more of these sites:</p>
+            <ul>
+                <li>
+                    <a href="https://www.iplocation.net/" target="_blank">IP Location</a>
+                </li>
+                <li>
+                    <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>
+                </li>
+                <li>
+                    <a href="https://www.ipip.net/" target="_blank">IP IP</a>
+                </li>
+            </ul>
+            <p>In all cases, you should see the IP address of the server, not your local client.</p>
+            <p>When you are done browsing, quit Shadowsocks from the context menu in the system tray.</p>
+            <h3><a id="2-2"></a>2.3. Windows Shadowsocks-Rust Client</h3>
+            <p>You can alternatively install the Shadowsocks-Rust client for Windows. This will give you access to the latest enhanced features.</p>
+            <p>Determine the latest release from <a href="https://github.com/shadowsocks/shadowsocks-rust/releases" target="_blank">https://github.com/shadowsocks/shadowsocks-rust/releases</a>. At the time of writing it is release 1.11.1. We will use <code>v1.11.1</code> in our example
+            commands. You may need to change this if a later release is available when you run this process.</p>
+            <p>On your PC, download the compressed archive containing the release’s executables for 64-bit Windows, which in our example is
+            <code>shadowsocks-v1.11.1.x86_64-pc-windows-msvc.zip</code>.</p>
+            <p>Also download the corresponding hash file. At the time of writing, this is <code>shadowsocks-v1.11.1.x86_64-pc-windows-msvc.zip.sha256</code>. Open the hash file in
+            a text editor.</p>
+            <p>In Windows PowerShell on your PC, issue the command:</p>
+            <blockquote>
+                <code>Get-FileHash -Algorithm SHA256 -Path Downloads\shadowsocks-v1.11.1.x86_64-pc-windows-msvc.zip</code>
+            </blockquote>
+            <p>Make sure that the displayed hash for the <code>zip</code> file matches the expected value in the <code>zip.sha256</code> file.</p>
+            <p>Once you have verified the file hash, unzip the zip file. It contains four executables:</p>
+            <ul>
+                <li><code>sslocal.exe</code></li>
+                <li><code>ssmanager.exe</code></li>
+                <li><code>ssserver.exe</code></li>
+                <li><code>ssurl.exe</code></li>
+            </ul>
+            <p>In the same folder as the executables, use a text editor to create a new text file. Insert the template:</p>
+            <pre>{
+    "server": "my_server_ip",
+    "server_port": 21429,
+    "password": "Qi0n04pcO38SFROxnIspyE0WRwwMjVEf",
+    "method": "chacha20-ietf-poly1305",
+    "local_address": "127.0.0.1",
+    "local_port": 1080
+}
+</pre>
+            <p>Make appropriate changes to the template:</p>
+            <ul>
+                <li>Insert your actual server IP address</li>
+                <li>Change the server port to your server value</li>
+                <li>Change the password to your server value</li>
+                <li>Optionally change the encryption method to match your server</li>
+            </ul>
+            <p>Save the file, in the same folder as the executables, with the name <code>config.json</code>.</p>
+            <p>Open a Command Prompt window in the folder containing the executables and the configuration JSON file. (You can do this quickly from Windows File Explorer by typing
+            <code>cmd</code> in the address bar.)</p>
+            <p>In your Command Prompt window, issue the command:</p>
+            <blockquote>
+                <code>sslocal.exe -c config.json</code>
+            </blockquote>
+            <p>Leave the Command Prompt window open, with <code>sslocal.exe</code> running in it.</p>
+            <p>Open Firefox. From the hamburger menu, select <strong>Settings</strong> &gt; <strong>General</strong>. Scroll down to <strong>Network Settings</strong>. Click the
+            <strong>Settings</strong> button.</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration</strong>.</li>
+                <li>Enter SOCKS Host <code>127.0.0.1</code>.</li>
+                <li>Enter Port <code>1080</code>.</li>
+                <li>Select <strong>SOCKS v5</strong>.</li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5</strong>.</li>
+                <li>Click <strong>OK</strong>.</li>
+            </ul>
+            <p>Check the end-to-end functionality to confirm that Shadowsocks-Rust and Firefox are configured correctly. With Shadowsocks-Rust (<code>sslocal.exe</code>) still
+            running, and Firefox proxied, visit one or more of these sites:</p>
+            <ul>
+                <li>
+                    <a href="https://www.iplocation.net/" target="_blank">IP Location</a>
+                </li>
+                <li>
+                    <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>
+                </li>
+                <li>
+                    <a href="https://www.ipip.net/" target="_blank">IP IP</a>
+                </li>
+            </ul>
+            <p>In all cases, you should see the IP address of the server, not your local client. The <a href="https://www.iplocation.net/" target="_blank">IP Location</a> site
+            displays geolocation data from four databases (IP2Location, ipinfo.io, DB-IP, and ipdata.co). Note that the four may differ due to timing delays in updating
+            databases.</p>
+            <p>When you have finished using Shadowsocks, revert Firefox from <strong>Manual proxy configuration</strong> to <strong>Use system proxy settings</strong>.</p>
+            <p>In your Command Prompt window, do <strong>Ctrl</strong>+<strong>c</strong> to end the Shadowsocks-Rust (<code>sslocal.exe</code>) process.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>If you have informal questions about Shadowsocks, you can ask on social media platforms such as <a href="https://www.reddit.com/r/dumbclub" target="_blank">Reddit</a>.</p>
+            <p>If you discover an issue with Shadowsocks, report it on the official GitHub issues page for the project:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-rust/issues" target="_blank">Shadowsocks-Rust</a>
+                </li>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-android/issues" target="_blank">Shadowsocks for Android</a>
+                </li>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-windows/issues" target="_blank">Shadowsocks for Windows</a>
+                </li>
+                <li>
+                    <a href="https://github.com/shadowsocks/ShadowsocksX-NG/issues" target="_blank">ShadowsocksX-NG for macOS</a>
+                </li>
+            </ul>
+            <p><em>Updated 2021-06-15</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

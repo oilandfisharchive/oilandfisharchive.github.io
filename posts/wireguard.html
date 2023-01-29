@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WireGuard</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>WireGuard</h1>
+            <p>WireGuard is not designed for censorship circumvention. Nevertheless, because it is new, it may not yet be blocked by censorship firewalls.</p>
+            <h2><a id="server"></a>Server</h2>
+            <p>SSH, PuTTY, or Xshell into your server. Get the server up to date. On CentOS:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt update</code>
+            </blockquote>
+            <blockquote>
+                <code>apt upgrade -y</code>
+            </blockquote>
+            <p>Download the Angristan WireGuard install script from GitHub. On CentOS, you may need to do <code>yum install wget</code> before this will work.</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/angristan/wireguard-install/master/wireguard-install.sh</code>
+            </blockquote>
+            <p>Set the execution bit.</p>
+            <blockquote>
+                <code>chmod +x wireguard-install.sh</code>
+            </blockquote>
+            <p>Run the script.</p>
+            <blockquote>
+                <code>./wireguard-install.sh</code>
+            </blockquote>
+            <p>Accept the defaults unless you have some reason to change them. For example, on a NAT IPv4 server, you’ll need to use one of your 20 allocated ports as the server’s
+            WireGuard port. Or you may have pre-opened a certain port for WireGuard in your firewall.</p>
+            <blockquote>
+                <code>I need to ask you a few questions before starting the setup. You can leave the default options and just press enter if you are ok with them.<br>
+                <br>
+                IPv4 or IPv6 public address: YY.YY.YY.YY<br>
+                Public interface: eth0<br>
+                WireGuard interface name: wg0<br>
+                Server's WireGuard IPv4: 10.66.66.1<br>
+                Server's WireGuard IPv6: fd42:42:42::1<br>
+                Server's WireGuard port [1-65535]: 63978<br>
+                First DNS resolver to use for the clients: 176.103.130.130<br>
+                Second DNS resolver to use for the clients (optional): 176.103.130.131<br>
+                <br>
+                Okay, that was all I needed. We are ready to setup your WireGuard server now. You will be able to generate a client at the end of the installation. Press any key
+                to continue...</code>
+            </blockquote>
+            <p>The script installs software for a couple of minutes. Then it asks you to name the first client. You can call the client something like <code>windows</code>. The
+            actual name is up to you.</p>
+            <blockquote>
+                <code>Tell me a name for the client. The name must consist of alphanumeric character. It may also include an underscore or a dash.<br>
+                Client name: windows<br>
+                Client's WireGuard IPv4: 10.66.66.2<br>
+                Client's WireGuard IPv6: fd42:42:42::2</code>
+            </blockquote>
+            <p>The file <code>wg0-client-windows.conf</code> will be created, containing the configuration for your client. Copy the contents of that file to your Windows
+            clipboard.</p>
+            <blockquote>
+                <code>cat wg0-client-windows.conf</code>
+            </blockquote>
+            <p>The script has stored the server’s WireGuard configuration in <code>/etc/wireguard/wg0.conf</code>. This file includes the IP masquerading rules for
+            <code>iptables</code> or <code>firewalld</code>. The script has also created a systemd service file named <code>/lib/systemd/system/wg-quick@.service</code>. You can
+            check the status of the service with the command:</p>
+            <blockquote>
+                <code>systemctl status wg-quick@wg0</code>
+            </blockquote>
+            <h2><a id="client"></a>Client</h2>
+            <p>Download the WireGuard for Windows client installer from the <a href="https://www.wireguard.com/install/" target="_blank">WireGuard site</a>. Run the installer.</p>
+            <p>After the install is done, launch WireGuard.</p>
+            <ol>
+                <li>Click <strong>Add Tunnel</strong> &gt;<strong>Add empty tunnel</strong>.</li>
+                <li>Give the tunnel a name.</li>
+                <li>Replace the contents of the tunnel definition with the contents of your <code>wg0-client-windows.conf</code> file from the server.</li>
+                <li>Click <strong>Save</strong>.</li>
+                <li>Click <strong>Activate</strong>.</li>
+            </ol>
+            <p>Now open a browser and surf the web over your VPN.</p>
+            <h2><a id="error-unknown-device-type"></a>Error: Unknown device type</h2>
+            <p>Sometimes <code>systemctl status wg-quick@wg0</code> shows <code>Error: Unknown device type</code>. There are various solutions. The solution that worked for me
+            came from <a href="https://blog.meer-web.nl/wireguard-attempting-to-install-and-configure-wireguard-fails-with-unknown-device-type-and-fatal-module-wireguard-not-found-in-directory/" target="_blank">Meer-Web</a>. Start with the command:</p>
+            <blockquote>
+                <code>modprobe wireguard</code>
+            </blockquote>
+            <p>If it returns a result like this:</p>
+            <blockquote>
+                <code>modprobe: FATAL: Module wireguard not found in directory /lib/modules/4.18.0-193.14.2.el8_2.x86_64</code>
+            </blockquote>
+            <p>Then proceed with this solution. Get the version number:</p>
+            <blockquote>
+                <code>dkms status</code>
+            </blockquote>
+            <p>We will use as an example <code>1.0.20200729</code>. Substitute your version number into the commands that follow:</p>
+            <blockquote>
+                <code>dkms build wireguard/1.0.20200729</code>
+            </blockquote>
+            <blockquote>
+                <code>dkms install wireguard/1.0.20200729</code>
+            </blockquote>
+            <blockquote>
+                <code>modprobe wireguard</code>
+            </blockquote>
+            <p>The last command no longer returns an error. So continue:</p>
+            <blockquote>
+                <code>systemctl restart wg-quick@wg0</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl status wg-quick@wg0</code>
+            </blockquote>
+            <p><em>Updated 2020-08</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

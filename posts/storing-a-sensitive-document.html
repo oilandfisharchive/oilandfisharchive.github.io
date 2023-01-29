@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Storing a Sensitive Document</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Storing a Sensitive Document</h1>
+            <p>The scenario in this article is that you have a sensitive document that you must hide from an adversary.</p>
+            <h2><a id="1"></a>1. Decisions</h2>
+            <p>As always, start with threat analysis. Who are your adversaries, and what do they want? Where are your vulnerabilities? How could you mitigate your risks? The
+            general principle is that every door must have a lock. As you construct your threat model, you will notice you can distinguish between three progressively more
+            difficult tasks:</p>
+            <ul>
+                <li>concealing the contents of the document</li>
+                <li>concealing the location of the document</li>
+                <li>concealing the existence of the document</li>
+            </ul>
+            <p>In some cases, electronic storage will be less safe than the old-fashioned methods. Ask yourself if it would be safer to write down your information on a piece of
+            paper and hide it in a book.</p>
+            <p>If you are going to store your information on a computer, you must take the usual precautions. Your computer should be firewalled and physically secured against
+            adversaries, who could otherwise install keyloggers or rootkits. You must follow the usual advice to computer users, such as not downloading attachments or visiting
+            malicious websites. Standard best practices will not be repeated here.</p>
+            <p>Then you must decide whether your sensitive document will remain locally or whether you will store it on a remote computer system. Local storage would imply
+            something like a VeraCrypt encrypted disk or USB flash drive. With VeraCrypt, a visible encrypted volume can contain within it a hidden encrypted volume, which would
+            be useful in some scenarios. Whether or not this is the best solution for you depends on your threat model. If powerful adversaries managed to break into your office,
+            an encrypted disk would attract attention, even if its contents could not be decrypted. You would need to store your drive or USB stick in a secure place. Despite
+            these disadvantages, the choice of local encrypted storage could be right for you if the major risk were your adversary’s power to monitor or disrupt your
+            communications.</p>
+            <p>Offsite storage would be your choice where a physical search of your premises or devices was the major risk. This is the route we will explore more fully here.</p>
+            <p>Once you have concluded that your sensitive document must be stored off-premises, the next question is where. For some threat models, a commercial cloud provider
+            such as Amazon AWS or Microsoft Azure would suffice. For other threat models, you would want to store your document in a private data center. And in still other
+            situations, you might be looking at more exotic solutions, such as server providers who accept Bitcoin or who operate out of a nuclear bunker in Sweden.</p>
+            <p>With any of these options, you could implement your file store as a Tor hidden service. This would protect your server’s IP address and location, if that mattered
+            to you. It would, though, have several disadvantages. Setting up and using a Tor hidden service needs additional expertise. Version 3 onion addresses are 56
+            hexadecimal characters long, which is far too long to remember and would itself need to be securely stored somewhere. The hidden service would make more sense if
+            someone else had set up a SecureDrop for you. Even so, Tor is blocked in several countries, and this would necessitate circumvention techniques, such as a <a href="proxy-before-tor-whonix.html">proxy before Tor</a>.</p>
+            <p>A secondary decision would be where and how to store your encryption keys. If your keys are also to be stored off-premises, you would want to store them at a
+            completely separate second location, with a different provider and even in a different country. The key would have to be stored without another round of encryption,
+            since an encrypted key could not be used to decrypt itself. It would be protected only by the strength of your key’s passphrase. It goes without saying that all data
+            transmissions to the off-premise servers would have to be encrypted.</p>
+            <p>If you want to conceal even the very existence of the sensitive document, you might want to erase all traces of your work. In this case, you might do your work in
+            Tails or using a live CD, powering off your computer after you have finished your work.</p>
+            <h2><a id="2"></a>2. Practicalities</h2>
+            <p>Now for the practicalities. We will discuss the scenario where the sensitive document, and possibly also your encryption key, are to be stored remotely, with the
+            local copy then deleted.</p>
+            <p>The GNU Privacy Guard (GPG) is already installed on most Linux systems. It is an open-source implementation of the Pretty Good Privacy (PGP) standard, which was
+            originally intended for encrypting emails.</p>
+            <p>Assuming GPG is already installed on your system, start by generating your encryption key:</p>
+            <blockquote>
+                <code>gpg --full-generate-key</code>
+            </blockquote>
+            <p>Press <strong>Enter</strong> to select the default type, which is RSA. Enter <code>4096</code> for the number of bits you want in the key. Press
+            <strong>Enter</strong> to accept the default of a key with no expiry date. Review the details, and enter <code>y</code> if they are correct.</p>
+            <p>Now you are asked for your name and email. GPG was designed for the encryption of emails, so it identifies keys by the email recipient. We’ll use as our example the
+            name of <code>John Doe</code> and the email address <code>john511115@mydomain.com</code>. Press <strong>Enter</strong> to have no descriptive comment in the key. You
+            are prompted to review your choices for identifiers and enter <code>o</code> for okay.</p>
+            <p>Then comes the passphrase. A passphrase can contain spaces as well as characters. It should be easy for you to remember, but difficult for others to guess. We will
+            use as an example:</p>
+            <blockquote>
+                <code>5 elephants are universally trunked</code>
+            </blockquote>
+            <p>Your key’s fingerprint and identifiers are redisplayed after the key is generated. You can bring up a list of the keys in your keyring with the command:</p>
+            <blockquote>
+                <code>gpg --list-keys</code>
+            </blockquote>
+            <p>Let’s suppose that your sensitive document is a file named <code>~/Documents/Sensitive.odt</code>. To encrypt this file with your key, issue the command:</p>
+            <blockquote>
+                <code>gpg --encrypt -r "John Doe" ~/Documents/Sensitive.odt</code>
+            </blockquote>
+            <p>This creates the encrypted file. Its name is formed by appending <code>.gpg</code> to the name of the original file. Continuing with our example, the name of the
+            encrypted file would be <code>~/Documents/Sensitive.odt.gpg</code>.</p>
+            <p>Now transmit the encrypted file to your offsite storage. How you do this depends on the nature of the storage. For a remote server, you could use <code>sftp</code>
+            or the FileZilla graphical client for <code>sftp</code>. For a storage bucket, you could use the <code>aws s3</code> command.</p>
+            <p>If you’ve decided to also store your encryption key offsite, you must first export it:</p>
+            <blockquote>
+                <code>gpg --export-secret-key -a "John Doe" &gt; ~/Documents/John.key</code>
+            </blockquote>
+            <p>You must reenter the passphrase when you export the private key. In our example, that is:</p>
+            <blockquote>
+                <code>5 elephants are universally trunked</code>
+            </blockquote>
+            <p>Then transmit the private key file <code>~/Documents/John.key</code> to its file store at your second provider.</p>
+            <p>Now, since the whole point is to protect against an adversary who might get hold of your computer, you will want to delete local copies of your file and, if you’re
+            also storing your key offsite, delete your key. Ordinary deleting doesn’t really remove a file from your hard drive. It just erases the pointers to it. We’ll therefore
+            use the <code>srm</code> (secure remove) utility from the <code>secure-delete</code> package. Install it like this:</p>
+            <blockquote>
+                <code>sudo apt install secure-delete</code>
+            </blockquote>
+            <p>Securely remove your file and its encrypted version from your local computer:</p>
+            <blockquote>
+                <code>srm -z ~/Documents/Sensitive.odt</code>
+            </blockquote>
+            <blockquote>
+                <code>srm -z ~/Documents/Sensitive.odt.gpg</code>
+            </blockquote>
+            <p>The <code>-z</code> option causes <code>srm</code> to fill the space occupied by the file with binary zeroes. Note that this option has no value for solid-state
+            drives or USB flash devices. These implement a technique called wear leveling, where logical sectors are remapped to physical sectors on every write operation.</p>
+            <p>If you’re also storing the key offsite, then delete both public and private keys from your GPG keyring. Begin by deleting the private key:</p>
+            <blockquote>
+                <code>gpg --delete-secret-key "John Doe"</code>
+            </blockquote>
+            <p>You will need to confirm that you really want to delete the key and its subkey. Then delete the public key:</p>
+            <blockquote>
+                <code>gpg --delete-key "John Doe"</code>
+            </blockquote>
+            <p>You can confirm that no keys remain in your keyring with the command:</p>
+            <blockquote>
+                <code>gpg --list-keys</code>
+            </blockquote>
+            <p>Now that the key is securely stored offsite, you can also delete your exported copy:</p>
+            <blockquote>
+                <code>srm -z ~/Documents/John.key</code>
+            </blockquote>
+            <p>You might even delete and recreate your GPG keyring, provided it contains no other keys you need to keep.</p>
+            <blockquote>
+                <code>srm -zr ~/.gnupg</code>
+            </blockquote>
+            <blockquote>
+                <code>gpg --list-keys</code>
+            </blockquote>
+            <p>If protecting against forensic analysis matters to you, you might be better doing all your work in Tails. If the original document was stored on a USB flash drive,
+            it should be completely destroyed with a hammer or a drill.</p>
+            <p>What remains at the end of this procedure is your encrypted file on an offsite server and your private key on a second offsite server. All the locations, file
+            names, passwords, and passphrases exist only in your memory. Nothing is stored on your local computer system.</p>
+            <p>When you want to reconstruct your sensitive document at a later date, retrieve both the encrypted file and your secret key from their file stores. Import the secret
+            key to your computer’s GPG keyring like this:</p>
+            <blockquote>
+                <code>gpg --import John.key</code>
+            </blockquote>
+            <p>You are asked for the passphrase, which was:</p>
+            <blockquote>
+                <code>5 elephants are universally trunked</code>
+            </blockquote>
+            <p>Finally, decrypt the encrypted sensitive document:</p>
+            <blockquote>
+                <code>gpg --decrypt ~/Documents/Sensitive.odt.gpg --output ~/Documents/Sensitive.odt</code>
+            </blockquote>
+            <p>Again, you must enter the passphrase before the decryption proceeds. This was:</p>
+            <blockquote>
+                <code>5 elephants are universally trunked</code>
+            </blockquote>
+            <p>Now you have the original, unencrypted, sensitive document. All the time it was stored remotely, there was nothing for your adversary to find locally.</p>
+            <p><em>Updated 2020-08</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

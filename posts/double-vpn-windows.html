@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Double VPN for Windows Users</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Double VPN for Windows Users</h1>
+            <p>This tutorial is for users who want privacy without the high security of <a href="practical-anonymity-political-religious-dissidents.html#10" target="_blank">Whonix</a>. The design is inspired by <a href="https://www.ivpn.net/privacy-guides/advanced-privacy-and-anonymity-part-6" target="_blank">part 6 of the Mirimir Advanced Privacy and Anonymity series</a>, originally published in 2013.</p><img src="../images/double-vpn-windows-0.png" alt="Double VPN for Windows Users">
+            <p>In this configuration:</p>
+            <ul>
+                <li>Your host computer connects to VPN1</li>
+                <li>A gateway VM connects to VPN2, which is tunneled through VPN1</li>
+                <li>You do all your work on a workstation VM</li>
+            </ul>
+            <p>The workstation VM has no direct connection to the Internet. All its traffic is forced to go, via an internal network, through the gateway VM.</p>
+            <p>With two different VPNs, no single party sees both your IP address and your destination site. VPN1 sees only your origin, and VPN2 sees only your destination.</p>
+            <h2><a id="1"></a>1. Initial Set Up</h2>
+            <h3><a id="1-1"></a>1.1. Install VirtualBox</h3>
+            <p>The host is a Windows PC running VirtualBox. If you don’t have VirtualBox already, install it now from the <a href="https://www.virtualbox.org/" target="_blank">VirtualBox website</a>.</p>
+            <h3><a id="1-2"></a>1.2. Install PuTTY</h3>
+            <p>It is recommended that you <a href="https://www.chiark.greenend.org.uk/~sgtatham/putty/" target="_blank">install PuTTY</a> so that you can SSH into a running
+            virtual machine.</p>
+            <h3><a id="1-3"></a>1.3. Create Email Accounts</h3>
+            <p>You’re going to use two anonymous VPNs. Assuming you want to be as private as possible, you’ll typically need two anonymous email accounts, one for each VPN. I say
+            typically because almost all VPN providers require you to register with an email address. Occasionally you’ll find one who lets you pay cash or cryptocurrency with
+            just an account number.</p>
+            <p>In the 2013 article, Mirimir mentioned <a href="https://anonbox.net/" target="_blank">AnonBox</a> and <a href="https://www.vfemail.net/" target="_blank">VFEmail</a>
+            as possible email providers. Some other providers you might consider are <a href="https://www.guerrillamail.com/" target="_blank">Guerrilla Mail</a>, <a href="https://tutanota.com/" target="_blank">Tutanota</a>, <a href="https://danwin1210.me/mail/index.php" target="_blank">Daniel</a>, and <a href="https://www.hushmail.com/" target="_blank">Hushmail</a>.</p>
+            <h3><a id="1-4"></a>1.4. Create VPN Accounts</h3>
+            <p>You need two completely separate VPN providers in different countries for maximum anonymity. Some privacy-focused providers you might consider are <a href="https://www.ivpn.net/" target="_blank">IVPN</a>, <a href="https://mullvad.net/" target="_blank">Mullvad</a>, and <a href="https://airvpn.org/" target="_blank">AirVPN</a>. SecurityKISS, mentioned in the original article, discontinued its VPN service in May 2020.</p>
+            <p>As you search for suitable VPN providers, your selection criteria might include the possibility of anonymous payment and support for Linux clients. When you do your
+            search, beware of affililate pages posing as reviews. Also be skeptical of claims not to keep logs. In the past, at least one provider turned out to be dishonest in
+            this respect. And watch out for <a href="https://www.zdnet.com/article/many-free-mobile-vpn-apps-are-based-in-china-or-have-chinese-ownership" target="_blank">free VPNs based in mainland China</a> which are under the control of the Chinese Communist Party.</p>
+            <p>When you have your accounts opened for VPN1 and VPN2, download the two configuration files to your host PC. We’ll call them <code>vpn1.ovpn</code> and
+            <code>vpn2.ovpn</code> in our examples.</p>
+            <h3><a id="1-5"></a>1.5. Select DNS Providers</h3>
+            <p>The Mirimir tutorial placed great emphasis on the privacy of your DNS requests.</p>
+            <p>On the Windows host, your DNS servers will often be pushed to you by your VPN provider. If your VPN provider does not push DNS servers, your Windows host will fall
+            back to its existing DNS servers.</p>
+            <p>While it is possible to get the Linux gateway to accept pushed DNS servers, in this tutorial we will keep things simple. We will specify our DNS servers directly on
+            the Linux gateway and workstation.</p>
+            <p>In the 2013 article, Mirmir recommended you choose from the third-party DNS servers listed by <a href="https://wikileaks.org/wiki/Alternative_DNS" target="_blank">WikiLeaks</a> or <a href="https://anonymous-proxy-servers.net/wiki/index.php/Censorship-free_DNS_servers" target="_blank">JonDoNYM</a>. You could
+            alternatively choose any other DNS provider of your choice, e.g. Google, Cloudflare, Quad9, etc.</p>
+            <p>We use the following in the examples later on:</p>
+            <ul>
+                <li>The gateway VM uses DNS servers <code>208.67.222.222</code> and <code>208.67.220.220</code></li>
+                <li>The workstation VM uses DNS servers <code>37.235.1.174</code> and <code>37.235.1.177</code></li>
+            </ul>
+            <p>These are just examples. You can make your own choices after you have done your research.</p>
+            <h3><a id="1-6"></a>1.6. Configure VPN1</h3>
+            <p>At this stage, you have all the information you need to configure the VPN1 client on your host PC.</p>
+            <p>The procedure for installing the VPN client will vary, depending on which client software and which VPN provider you chose. Some providers recommend you use the
+            generic OpenVPN client, while others have their own client.</p>
+            <ul>
+                <li>If you are using the generic OpenVPN client, then install it now from the <a href="https://openvpn.net/community-downloads/" target="_blank">OpenVPN website</a> using the Windows 64-bit installer. Once it’s running, find the OpenVPN GUI icon in the system tray, right-click, and select <strong>Import
+                file</strong>. Then import <code>vpn1.ovpn</code>.
+                </li>
+                <li>If your provider has their own client, then follow your provider’s instructions to configure VPN1 on your host PC.</li>
+            </ul>
+            <p>You could test connecting to VPN1 now if you want to. Either follow your provider’s intrsuctions, or again find the OpenVPN GUI icon in the system tray,
+            right-click, and select <strong>Connect</strong>.</p>
+            <p>After testing the connection from your browser, disconnect VPN1 (unless you want to leave it running for all the remaining steps).</p>
+            <h2><a id="2"></a>2. Download and Verify Debian Installer</h2>
+            <p>We are going to use Debian for both the gateway VM and the workstation VM. Therefore we start by downloading a Debian ISO. We will use the same ISO for both virtual
+            machines.</p>
+            <h3><a id="2-1"></a>2.1. Download Debian Net Installer</h3>
+            <p>Open Firefox and visit the <a href="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/" target="_blank">Debian CD page</a>.</p>
+            <p>Download the latest version of the 64-bit Debian Net Installer. At the time of writing it is named <code>debian-10.5.0-amd64-netinst.iso</code>, and we will use
+            this name in our sample commands. It may have changed by the time you read this tutorial. The current CD ISO file is a 350 MB download.</p>
+            <h3><a id="2-2"></a>2.2. Verify Debian Net Installer</h3>
+            <p>Also from the <a href="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/" target="_blank">Debian CD page</a>, view the checksum file
+            <code>SHA512SUMS</code>.</p>
+            <p>You will see that there is a line in it giving the expected checksum for <code>debian-10.5.0-amd64-netinst.iso</code>.</p>
+            <p>Calculate the actual SHA512 checksum of the ISO by opening Windows PowerShell (right-click on start menu, then select Windows PowerShell) and issuing the
+            commands:</p>
+            <blockquote>
+                <code>cd Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>Get-FileHash -Algorithm sha512 debian-10.5.0-amd64-netinst.iso</code>
+            </blockquote>
+            <p>Compare the expected SHA512 checksum with the actual SHA512 checksum. They should be identical.</p>
+            <p>Close Windows PowerShell.</p>
+            <h2><a id="3"></a>3. Set Up Gateway</h2>
+            <h3><a id="3-1"></a>3.1. Create Gateway VM</h3>
+            <p>Create a new virtual machine in VirtualBox (<strong>Machine</strong> &gt; <strong>New</strong>).</p>
+            <ol>
+                <li>Name the machine <code>Gateway</code>.</li>
+                <li>Type is <strong>Linux</strong>, and version is <strong>Debian 64-bit</strong>.</li>
+                <li>The <a href="https://www.debian.org/releases/buster/amd64/ch03s04.en.html" target="_blank">recommended minimum hardware</a> for Debian with no desktop is 512
+                MB RAM. To avoid running out of resources, it is better to specify 1024 MB (1 GB) of RAM.
+                </li>
+                <li>4 GB of hard disk will be enough.</li>
+            </ol>
+            <p>Do not start the machine just yet! Click <strong>Settings</strong>. On the <strong>Network</strong> page, go to the tab for <strong>Adapter 2</strong>. We are going
+            to add a second network interface card.</p>
+            <ol>
+                <li>Check <strong>Enable Network Adapter</strong>.</li>
+                <li>Sepecify that it is attached to <strong>Internal Network</strong>.</li>
+                <li>Name the internal network <code>intnet</code>.</li>
+                <li>Click <strong>OK</strong>.</li>
+            </ol>
+            <h3><a id="3-2"></a>3.2. Install Debian on Gateway VM</h3>
+            <p>Now you can start the gateway VM. The start-up disk is <code>debian-10.5.0-amd64-netinst.iso</code> (or whatever the ISO is named at the time you run this
+            tutorial).</p>
+            <ol>
+                <li>Select <strong>Graphical install</strong>, and press <strong>Enter</strong></li>
+                <li>Select <strong>English</strong> or another language, and click <strong>Continue</strong></li>
+                <li>Select <strong>United States</strong> or another country, and click <strong>Continue</strong></li>
+                <li>Select <strong>American English</strong> or another keyboard, and click <strong>Continue</strong></li>
+                <li>Select the NAT interface as your primary network interface (on my machine it was named <code>enp0s3</code>), and click <strong>Continue</strong></li>
+                <li>For hostname, put <code>gateway</code>, and click <strong>Continue</strong></li>
+                <li>Leave domain name blank, and click <strong>Continue</strong></li>
+                <li>Enter and reenter a root password, and click <strong>Continue</strong></li>
+                <li>Enter the name of your nonroot user, and click <strong>Continue</strong></li>
+                <li>Enter a username for your nonroot user, and click <strong>Continue</strong></li>
+                <li>Enter and reenter a password for your nonroot user, and click <strong>Continue</strong></li>
+                <li>Select your timezone, and click <strong>Continue</strong></li>
+                <li>For partitioning, select <strong>Guided use entire disk</strong>, and click <strong>Continue</strong></li>
+                <li>Select your only disk, and click <strong>Continue</strong></li>
+                <li>Select <strong>All files in one partition</strong>, and click <strong>Continue</strong></li>
+                <li>Select <strong>Finish partitioning and write changes to disk</strong>, and click <strong>Continue</strong></li>
+                <li>When asked to confirm that you want changes written to disk, change the radio button from <strong>No</strong> to <strong>Yes</strong>, and click
+                <strong>Continue</strong></li>
+                <li>When asked if you want to scan another CD, leave the selection at <strong>No</strong>, and click <strong>Continue</strong></li>
+                <li>Select your preferred country for the Debian mirror, and click <strong>Continue</strong></li>
+                <li>If there are multiple mirrors in that country, select your preferred mirror, and click <strong>Continue</strong></li>
+                <li>Leave the HTTP proxy blank (unless you need a proxy to reach the Internet), and click <strong>Continue</strong></li>
+                <li>For the package popularity contest, leave the selection at <strong>No</strong>, and click <strong>Continue</strong></li>
+                <li>For software selection, check <strong>SSH server</strong>, uncheck everything else, and click <strong>Continue</strong></li>
+                <li>When asked if you want to install GRUB boot loader to the master boot record, leave the selection at <strong>Yes</strong>, and click
+                <strong>Continue</strong></li>
+                <li>Select your only disk for the GRUB boot loader, and click <strong>Continue</strong></li>
+                <li>When installation is complete, click <strong>Continue</strong></li>
+            </ol>
+            <h3><a id="3-3"></a>3.3. Initial Login</h3>
+            <p>The gateway VM boots for the first time. From the virtual machine console, login as <code>root</code>, with the root password you specified during the install.</p>
+            <p>Get your system up to date by issuing the commands:</p>
+            <blockquote>
+                <code>apt update</code>
+            </blockquote>
+            <blockquote>
+                <code>apt upgrade</code>
+            </blockquote>
+            <p>Now add your nonroot user to the list of users who can issue root commands:</p>
+            <blockquote>
+                <code>apt install sudo</code>
+            </blockquote>
+            <blockquote>
+                <code>usermod -aG sudo <em>myuserid</em></code>
+            </blockquote>
+            <p>In the above command, replace <code><em>myuserid</em></code> by your actual nonroot user id.</p>
+            <p>Allow your root user to SSH into the server by editing the SSH daemon configuration:</p>
+            <blockquote>
+                <code>nano /etc/ssh/sshd_config</code>
+            </blockquote>
+            <p>Uncomment and modify the <code>PermitRootLogin</code> line, so that root login is allowed:</p>
+            <blockquote>
+                <code>PermitRootLogin yes</code>
+            </blockquote>
+            <p>Save the file. In the nano editor, that’s <strong>Ctrl</strong>+<strong>o</strong>, <strong>Enter</strong>, and <strong>Ctrl</strong>+<strong>x</strong>.</p>
+            <p>Restart the SSH daemon with your revised configuration:</p>
+            <blockquote>
+                <code>systemctl restart sshd</code>
+            </blockquote>
+            <p>Now we have finished using the console. From now on, we will SSH into the gateway VM from the host:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <p>Minimize the console window, but leave the VM running.</p>
+            <h3><a id="3-4"></a>3.4. SSH into Gateway VM</h3>
+            <p>An SSH client offers more facilities than the console. In particular, it’s easier to copy and paste. You could use PuTTY, Xshell, or Windows PowerShell as your SSH
+            client. In the examples in this tutorial we are going to use <a href="https://www.chiark.greenend.org.uk/~sgtatham/putty/" target="_blank">PuTTY</a>.</p>
+            <p>We have to set up port forwarding to allow you to SSH into a VirtualBox VM. In VirtualBox, open the settings for the Gateway VM. Go to the <strong>Network</strong>
+            page. Expand the <strong>Advanced</strong> settings for <strong>Adapter 1</strong>. Click <strong>Port Forwarding</strong>. Add a new rule like this:</p>
+            <ol>
+                <li>The Name is <code>Gateway SSH</code></li>
+                <li>The Protocol is <strong>TCP</strong>.</li>
+                <li>The Host IP is <code>127.0.0.1</code></li>
+                <li>The Host Port is some port number that is not being used for anything else, for example <code>1522</code></li>
+                <li>The Guest IP is <code>10.0.2.15</code> (the IP address of the guest from VirtualBox’s point of view)</li>
+                <li>The Guest Port is <code>22</code></li>
+                <li>Click <strong>OK</strong>.</li>
+                <li>Click <strong>OK</strong>.</li>
+            </ol>
+            <p>Open PuTTY. Specify Host Name <code>127.0.0.1</code> and Port <code>1522</code>. Click <strong>Save</strong>. Then click <strong>Open</strong>.</p>
+            <p>Log in as <code>root</code>, with the root password you specified during the install.</p>
+            <h3><a id="3-5"></a>3.5. Configure Networking</h3>
+            <p>Specify the DNS servers for the gateway VM. There are actually multiple ways that nameservers may be set in Debian, as described on the <a href="https://wiki.debian.org/NetworkConfiguration#Defining_the_.28DNS.29_Nameservers" target="_blank">Debian networking</a> page. In our simple case, they are set in
+            <code>/etc/resolv.conf</code>. Edit that file:</p>
+            <blockquote>
+                <code>nano /etc/resolv.conf</code>
+            </blockquote>
+            <p>Replace the nameservers from the host by your preferred nameservers. For example:</p>
+            <blockquote>
+                <code>nameserver 208.67.222.222<br>
+                nameserver 208.67.220.220</code>
+            </blockquote>
+            <p>Note that you can copy lines of text from the host with <strong>Ctrl</strong>+<strong>c</strong>, then paste them into PuTTY by right-clicking where you want them
+            to go.</p>
+            <p>Save the file. We’ll need to restart networking for this change, but we’ll do that in a moment.</p>
+            <p>Now take a look to see how your network interfaces have been configured. In your PuTTY session with the gateway, issue the command:</p>
+            <blockquote>
+                <code>ip a</code>
+            </blockquote>
+            <p>Note down the information for the internal network. It will have a name such as <code>enp0s8</code> but few other details.</p>
+            <p>Edit the network interfaces file:</p>
+            <blockquote>
+                <code>nano /etc/network/interfaces</code>
+            </blockquote>
+            <p>Make your interfaces look like this. In the example, we have decided we will us the subnet <code>192.168.100.0/24</code> for the internal network.</p>
+            <pre>source /etc/network/interfaces.d/*
+
+auto lo
+iface lo inet loopback
+
+auto enp0s3
+iface enp0s3 inet dhcp
+
+auto enp0s8
+iface enp0s8 inet static
+    address 192.168.100.1
+    netmask 255.255.255.0
+</pre><img src="../images/double-vpn-windows-1.png" alt="Network interfaces for loopback, NAT, and internal network">
+            <p>Save the file. Now restart networking with all your changes:</p>
+            <blockquote>
+                <code>systemctl restart networking</code>
+            </blockquote>
+            <p>Check your IP addresses:</p>
+            <blockquote>
+                <code>ip a</code>
+            </blockquote><img src="../images/double-vpn-windows-2.png" alt="IP address for configured internal network">
+            <p>Your internal network interface should now have the IP address <code>192.168.100.1</code>.</p>
+            <h3><a id="3-6"></a>3.6. Configure Forwarding</h3>
+            <p>Next we allow the gateway to act as a router and forward packets. Edit the system control configuration file:</p>
+            <blockquote>
+                <code>nano /etc/sysctl.conf</code>
+            </blockquote>
+            <p>Uncomment the line:</p>
+            <blockquote>
+                <code>net.ipv4.ip_forward=1</code>
+            </blockquote>
+            <p>Save the file. Make this change effective:</p>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.conf</code>
+            </blockquote>
+            <h3><a id="3-7"></a>3.7. Enable Masquerading</h3>
+            <p>Enable masquerading of the source IP address on forwarded packets. Install the firewall we will use for masquerading:</p>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>First we will add some basic firewall rules. These restrict input to related traffic, the loopback interface, SSH from the host, and any requests originating from
+            the internal network:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 ip saddr 10.0.2.2 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip saddr 192.168.100.0/24 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Now we add the firewall rules for Network Address Translation (NAT) with masquerading:</p>
+            <blockquote>
+                <code>nft add table nat</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat prerouting { type nat hook prerouting priority 0 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat postrouting { type nat hook postrouting priority 100 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule nat postrouting masquerade</code>
+            </blockquote>
+            <p>Save the firewall rules so that they persist across reboots:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="3-8"></a>3.8. Install and Configure DHCP Server</h3>
+            <p>The gateway VM will act as a Dynamic Host Configuration Protocol (DHCP) server for the internal network. Install the DHCP server software package:</p>
+            <blockquote>
+                <code>apt install isc-dhcp-server -y</code>
+            </blockquote>
+            <p>There will be some errors when it starts, as you have not done the configuration yet.</p>
+            <p>Now you need to see your interface details again. Issue the command:</p>
+            <blockquote>
+                <code>ip a</code>
+            </blockquote>
+            <p>Note down the information for the internal network interface. For example, it might be interface name <code>enp0s8</code> with MAC address
+            <code>08:00:27:b4:d1:8f</code>.</p>
+            <p>Edit the DHCP server defaults file:</p>
+            <blockquote>
+                <code>nano /etc/default/isc-dhcp-server</code>
+            </blockquote>
+            <p>Delete the existing lines. Insert a new line specifying that we will act as DHCP server for the internal network. Continuing our example of an interface named
+            <code>enp0s8</code>:</p>
+            <blockquote>
+                <code>INTERFACESv4="enp0s8"</code>
+            </blockquote>
+            <p>Save the file. Next, we edit the DHCP daemon configuration file. Make a backup, empty the existing file, then edit it.</p>
+            <blockquote>
+                <code>cp /etc/dhcp/dhcpd.conf /etc/dhcp/dhcpd.conf.bak</code>
+            </blockquote>
+            <blockquote>
+                <code>&gt; /etc/dhcp/dhcpd.conf</code>
+            </blockquote>
+            <blockquote>
+                <code>nano /etc/dhcp/dhcpd.conf</code>
+            </blockquote>
+            <p>Insert the template that follows, but with these substitutions:</p>
+            <ul>
+                <li>Replace <code>37.235.1.174</code> and <code>37.235.1.177</code> by your choices for DNS servers (these should never be used, since all traffic on the
+                workstation goes through the gateway VM)</li>
+                <li>Replace <code>192.168.100.0</code> by your choice of subnet for the DHCP server</li>
+                <li>Replace the range of IP addresses to be given to clients (<code>192.168.100.64</code> through <code>192.168.100.127</code> in the template) by your own
+                chioce</li>
+                <li>Replace the <code>192.168.100.1</code> as the fixed address for the gateway by your own choice</li>
+                <li>Replace <code>08:00:27:fd:27:77</code> by your actual internal network interface MAC address</li>
+            </ul>
+            <p>Here is the template for you to copy from and adjust:</p>
+            <pre>option domain-name-servers 37.235.1.174, 37.235.1.177;
+default-lease-time 600;
+max-lease-time 7200;
+ddns-update-style none;
+
+subnet 192.168.100.0 netmask 255.255.255.0 {
+  range 192.168.100.64 192.168.100.127;
+  option routers 192.168.100.1;
+}
+
+host gateway-router {
+  hardware ethernet 08:00:27:b4:d1:8f;
+  fixed-address 192.168.100.1;
+}
+</pre><img src="../images/double-vpn-windows-3.png" alt="Double VPN for Windows Users">
+            <p>Save the file. Start the DHCP server:</p>
+            <blockquote>
+                <code>systemctl enable isc-dhcp-server</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start isc-dhcp-server</code>
+            </blockquote>
+            <p>This time it should start without errors and be running:</p>
+            <blockquote>
+                <code>systemctl status isc-dhcp-server</code>
+            </blockquote>
+            <h3><a id="3-9"></a>3.9. Upload VPN2 Configuration</h3>
+            <p>Since you have installed PuTTY, you can use the <code>pscp.exe</code> utility that comes with it to upload the <code>vpn2.ovpn</code> file to your gateway VM.</p>
+            <p>On your Windows host, do <strong>Win</strong>+<strong>r</strong> to get a run box. Type <code>cmd</code>. Press <strong>Enter</strong>. A Windows command prompt
+            window opens. Enter the command:</p>
+            <blockquote>
+                <code>"C:\Program Files\PuTTY\pscp.exe" -P 1522 Downloads\vpn2.ovpn root@127.0.0.1:vpn2.ovpn</code>
+            </blockquote>
+            <p>Enter your root password.</p>
+            <p>When the upload is done, close your Windows command prompt window.</p>
+            <p>Back in your PuTTY session with the gateway, you can see your uploaded file with the command:</p>
+            <blockquote>
+                <code>ls -l</code>
+            </blockquote>
+            <p>You should see your <code>vpn2.ovpn</code> file, uploaded a moment ago.</p>
+            <h3><a id="3-10"></a>3.10. Install OpenVPN on Gateway</h3>
+            <p>Install the OpenVPN package on the gateway VM. In your PuTTY session with the gateway, issue the command:</p>
+            <blockquote>
+                <code>apt install openvpn -y</code>
+            </blockquote>
+            <p>You can exit your PuTTY session for now.</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="4"></a>4. Set Up Workstation</h2>
+            <h3><a id="4-1"></a>4.1. Create Workstation VM</h3>
+            <p>Create a new virtual machine in VirtualBox (<strong>Machine</strong> &gt; <strong>New</strong>).</p>
+            <ol>
+                <li>Name the machine <code>Workstation</code>.</li>
+                <li>Type is <strong>Linux</strong>, and version is <strong>Debian 64-bit</strong>.</li>
+                <li>The <a href="https://www.debian.org/releases/buster/amd64/ch03s04.en.html" target="_blank">recommended minimum hardware</a> for Debian with desktop is 2048 MB
+                (2 GB) of RAM. You can give it more if you have the capacity on the host and you will be doing a lot of work on the workstation.
+                </li>
+                <li>How much diskspace you need depends on how much work you will do on the workstation. A reasonable allowance for a moderate user might be 20 GB of hard
+                disk.</li>
+            </ol>
+            <p>Create the machine, but do not start it just yet! Click <strong>Settings</strong>. On the <strong>Network</strong> page, go to the tab for <strong>Adapter
+            1</strong>. We are going to use only the <em>internal</em> network. This machine must not be attached to the NAT network!</p>
+            <ol>
+                <li>Make sure <strong>Enable Network Adapter</strong> is checked.</li>
+                <li>Make it attached to <strong>Internal Network</strong>.</li>
+                <li>The name of the internal network is <code>intnet</code>.</li>
+                <li>Click <strong>OK</strong>.</li>
+            </ol>
+            <h3><a id="4-2"></a>4.2. Install Debian on Workstation VM</h3>
+            <p>Now you can start the Workstation VM from the <code>debian-10.5.0-amd64-netinst.iso</code> start-up disk.</p>
+            <ol>
+                <li>Select <strong>Graphical install</strong>, and press <strong>Enter</strong></li>
+                <li>Select <strong>English</strong> or another language, and click <strong>Continue</strong></li>
+                <li>Select <strong>United States</strong> or another country, and click <strong>Continue</strong></li>
+                <li>Select <strong>American English</strong> or another keyboard, and click <strong>Continue</strong></li>
+                <li>The internal network is your only network interface, and it should be configured automatically without asking you any further questions</li>
+                <li>For hostname, put <code>workstation</code>, and click <strong>Continue</strong></li>
+                <li>Leave domain name blank, and click <strong>Continue</strong></li>
+                <li>Enter and reenter a root password, and click <strong>Continue</strong></li>
+                <li>Enter the name of your nonroot user, and click <strong>Continue</strong></li>
+                <li>Enter a username for your nonroot user, and click <strong>Continue</strong></li>
+                <li>Enter and reenter a password for your nonroot user, and click <strong>Continue</strong></li>
+                <li>Select your timezone, and click <strong>Continue</strong></li>
+                <li>For partitioning, select <strong>Guided use entire disk</strong>, and click <strong>Continue</strong></li>
+                <li>Select your only disk, and click <strong>Continue</strong></li>
+                <li>Select <strong>All files in one partition</strong>, and click <strong>Continue</strong></li>
+                <li>Select <strong>Finish partitioning and write changes to disk</strong>, and click <strong>Continue</strong></li>
+                <li>Change the radio button from <strong>No</strong> to <strong>Yes</strong> to write the changes to disk, and click <strong>Continue</strong></li>
+                <li>For scan another CD, leave the selection at <strong>No</strong>, and click <strong>Continue</strong></li>
+                <li>Select your preferred country for the Debian mirror, and click <strong>Continue</strong></li>
+                <li>If there are multiple mirrors in that country, select your preferred mirror, and click <strong>Continue</strong></li>
+                <li>Leave the HTTP proxy blank (unless you need a proxy to reach the Internet), and click <strong>Continue</strong></li>
+                <li>For the package popularity contest, leave the selection at <strong>No</strong>, and click <strong>Continue</strong></li>
+                <li>For software selection, uncheck everything, then check <strong>Debian desktop environment</strong> and <strong>GNOME</strong>, and click
+                <strong>Continue</strong></li>
+                <li>Wait a while for GNOME desktop to be installed, then when asked if you want to install GRUB boot loader, leave the selection at <strong>Yes</strong>, and click
+                <strong>Continue</strong></li>
+                <li>Highlight your disk for the GRUB boot loader, and click <strong>Continue</strong></li>
+                <li>When installation is complete, click <strong>Continue</strong></li>
+            </ol>
+            <h3><a id="4-3"></a>4.3. Initial Login</h3>
+            <p>After the boot sequence is complete, the GNOME desktop graphical login screen appears.</p><img src="../images/double-vpn-windows-4.png" alt=
+            "GNOME desktop graphical login screen">
+            <p>Log in to your nonroot user account using the password you set for the nonroot user.</p>
+            <p>To make the screen bigger, right-click on the desktop, and select <strong>Display Settings</strong>. You might have to drag the window left so you can see the
+            choices. Choose, for example, <code>1024x768</code>. Click <strong>Apply</strong>. Click <strong>Keep changes</strong>. Close the settings window. Now your display is
+            a bit bigger.</p>
+            <p>To get a terminal, click <strong>Activities</strong> and search for <code>terminal</code>. Open GNOME terminal. To change the colors, do <strong>Edit</strong> &gt;
+            <strong>Preferences</strong> &gt; <strong>Colors</strong>.</p>
+            <p>Switch to the root user for the next few steps:</p>
+            <blockquote>
+                <code>su -</code>
+            </blockquote>
+            <p>You will be asked to enter the root password you specified during the install.</p>
+            <p>Get your system up to date by issuing the commands:</p>
+            <blockquote>
+                <code>apt update</code>
+            </blockquote>
+            <blockquote>
+                <code>apt upgrade</code>
+            </blockquote>
+            <p>Add your nonroot user to the list of users who can issue root commands:</p>
+            <blockquote>
+                <code>apt install sudo</code>
+            </blockquote>
+            <blockquote>
+                <code>usermod -aG sudo <em>myuserid</em></code>
+            </blockquote>
+            <p>Replace <code><em>myuserid</em></code> in the above by your actual nonroot user id.</p>
+            <p>Exit your root session:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <p>Exit your nonroot session:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <p>Now log out of your the workstation (button, top right). You do not need to completely power off the VM. Then log back in again as the nonroot user, so your new
+            <code>sudo</code> group membership will be effective.</p>
+            <p>Open a terminal again. Install the GNOME tweak tool. As a nonroot user, you will have to prefix your root commands with <code>sudo</code>:</p>
+            <blockquote>
+                <code>sudo apt install gnome-tweak-tool</code>
+            </blockquote>
+            <p>After the install, close the terminal. From <strong>Activities</strong>, search for <code>tweak</code>. Open <strong>Tweaks</strong>. On the <strong>Windows
+            Titlebar</strong> page, toggle on the <strong>Maximize</strong> and <strong>Minimize</strong> titlebar buttons. Close the GNOME tweak tool.</p>
+            <h3><a id="4-5"></a>4.5. Configure Firefox</h3>
+            <p>From the <strong>Activities</strong> menu, open Firefox (it is already in your Favorites dock on the left-hand side of the GNOME desktop). From the Firefox
+            hamburger menu, select <strong>Preferences</strong>:</p>
+            <ul>
+                <li>On the <strong>Home</strong> tab, change homepage and new tabs default to blank page</li>
+                <li>On the <strong>Search</strong> tab, change default search engine to DuckDuckGo</li>
+                <li>On the <strong>Privacy & Security</strong> tab, uncheck the option that remembers logins and passwords, and uncheck Firefox data collection</li>
+            </ul>
+            <p>From the Firefox hamburger menu, select <strong>Add-ons</strong>, then search for and install these extensions:</p>
+            <ul>
+                <li><strong>uBlock Origin</strong> by Raymond Hill</li>
+                <li><strong>Privacy Badger</strong> by EFF Technologists</li>
+                <li><strong>HTTPS Everywhere</strong> by EFF Technologists</li>
+            </ul>
+            <p>If you require more security and you are willing to spend time whitelisting domains that you trust, also install <strong>NoScript Security Suite</strong> by Giorgio
+            Maone.</p>
+            <p>Close Firefox for now. Click <strong>Close Tabs</strong> if necessary.</p>
+            <h2><a id="5"></a>5. End-to-End Test</h2>
+            <p>On the host PC, find the OpenVPN icon in the system tray. Right-click. Select <strong>Connect</strong>. Allow a few seconds for VPN1 to connect.</p>
+            <p>From a browser on the host, visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see the VPN1 server IP address.</p>
+            <p>Open the gateway VM console. Log in as root. Turn on VPN2 like this:</p>
+            <blockquote>
+                <code>openvpn --config vpn2.ovpn</code>
+            </blockquote>
+            <p>Allow a few seconds for it to connect. You should see a message, <code>Initialization Sequence Completed</code>.</p>
+            <p>Minimize the console window, but leave it logged in with VPN2 running.</p>
+            <p>Now go to workstation VM. Open Firefox again. Test your connection from the workstation all the way to a website. In particular, visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see the VPN2 server IP address. You are therefore reaching VPN2 through your VPN1 tunnel.</p>
+            <h2><a id="6"></a>6. Take Snapshot</h2>
+            <p>Taking a VM snapshot at this point will give you a restore point to a fully configured but unused workstation.</p>
+            <ol>
+                <li>In the workstation GNOME desktop, power off the workstation</li>
+                <li>In VirtualBox, select the <strong>Workstation</strong> VM</li>
+                <li>From the VirtualBox menu, do <strong>Snapshot</strong> &gt; <strong>Take</strong></li>
+                <li>Give it a name such as <code>Fresh install</code>, and click <strong>OK</strong></li>
+                <li>Power on the <strong>Workstation</strong> VM again</li>
+                <li>Log in to the workstation as your nonroot user</li>
+            </ol>
+            <p>You can restore from the <code>Fresh install</code> snapshot any time you want a clean workstation.</p>
+            <h2><a id="7"></a>7. Get Help and Report Issues</h2>
+            <p>Here are some avenues for support:</p>
+            <ul>
+                <li>
+                    <a href="https://forums.virtualbox.org/" target="_blank">VirtualBox forums</a>
+                </li>
+                <li>
+                    <a href="https://www.debian.org/support" target="_blank">Debian support</a>
+                </li>
+                <li>
+                    <a href="https://forums.openvpn.net/" target="_blank">OpenVPN forums</a>
+                </li>
+            </ul>
+            <p><em>Updated 2020-09</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

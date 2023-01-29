@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenVPN + Tunnelblick XOR Patch</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>OpenVPN + Tunnelblick XOR Patch</h1>
+            <p>The XOR patch for OpenVPN comes to us courtesy of the <a href="https://tunnelblick.net/cOpenvpn_xorpatch.html" target="_blank">Tunnelblick team</a>. They state that
+            “the patch is attractive because it is so easy to implement: simply apply the patch to both the OpenVPN server and the OpenVPN client and add a single, identical
+            option to the configuration files for each.” The XOR patch is automatically included in Tunnelblick OpenVPN software for macOS.</p>
+            <p>This article will show you how to install and configure OpenVPN with the XOR patch on a Debian server and client. You could also use a recent version of Ubuntu. We
+            therefore sometimes refer to the server or client generically as Debian/Ubuntu.</p>
+            <h2><a id="1"></a>1. Set Up Server</h2>
+            <h3><a id="1-1"></a>1.1. Choose Port for OpenVPN</h3>
+            <p>On your server, choose a random port number between 10,000 and 50,000 for OpenVPN.</p>
+            <blockquote>
+                <code>awk -v min=10000 -v max=50000 'BEGIN{srand(); print int(min+rand()*(max-min+1))}'</code>
+            </blockquote>
+            <p>The example result that we will use in the rest of this article:</p>
+            <blockquote>
+                <code>16273</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Install and Configure Firewall</h3>
+            <p>There are multiple ways to implement a firewall: nftables, iptables, ufw, and firewalld. The modern way is nftables, and that is what we will use here. Issue each
+            of these commands in turn to install and start nftables:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>Configure the firewall to accept related traffic and internal traffic:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better.</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 counter accept</code>
+            </blockquote>
+            <p>Add a rule to open the OpenVPN port that you chose at random:</p>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport 16273 counter accept</code>
+            </blockquote>
+            <p>Drop all unexpected input:</p>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Now add the table for Network Address Translation (NAT) and masquerading the outgoing IP adddress:</p>
+            <blockquote>
+                <code>nft add table nat</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat prerouting { type nat hook prerouting priority 0 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat postrouting { type nat hook postrouting priority 100 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule nat postrouting masquerade</code>
+            </blockquote>
+            <p>Save the rules:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Allow Forwarding</h3>
+            <p>Enable IPv4 forwarding in the Linux kernel. Edit the system control configuration file:</p>
+            <blockquote>
+                <code>vi /etc/sysctl.conf</code>
+            </blockquote>
+            <p>Uncomment the line:</p>
+            <blockquote>
+                <code>net.ipv4.ip_forward=1</code>
+            </blockquote>
+            <p>Save the file. Apply the new settings by issuing the command:</p>
+            <blockquote>
+                <code>sysctl -p</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Get OpenVPN and XOR Patch Source</h3>
+            <p>You must use matching versions of OpenVPN and the XOR patch.</p>
+            <p>Open a browser and visit the <a href="https://github.com/OpenVPN/openvpn/releases" target="_blank">GitHub releases page for OpenVPN</a>. Determine the latest
+            release number. At the time of writing, it is version <code>v2.5_beta3</code>. It may be a later version at the time you read this article. We will use
+            <code>v2.5_beta3</code> in our examples, though you may need to replace this.</p>
+            <p>Download the OpenVPN tarball for your version:</p>
+            <blockquote>
+                <code>wget https://github.com/OpenVPN/openvpn/archive/v2.5_beta3.tar.gz</code>
+            </blockquote>
+            <blockquote>
+                <code>tar -xvf v2.5_beta3.tar.gz</code>
+            </blockquote>
+            <p>Download and extract the Tunnelblick repository:</p>
+            <blockquote>
+                <code>wget https://github.com/Tunnelblick/Tunnelblick/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Apply Patches</h3>
+            <p>Copy the patch files into the OpenVPN directory, replacing <code>openvpn-2.5_beta3</code> by the current version at the time you run this:</p>
+            <blockquote>
+                <code>cp Tunnelblick-master/third_party/sources/openvpn/openvpn-2.5_beta3/patches/*.diff openvpn-2.5_beta3</code>
+            </blockquote>
+            <p>Apply the patches to the OpenVPN source:</p>
+            <blockquote>
+                <code>cd openvpn-2.5_beta3</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install patch -y</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 02-tunnelblick-openvpn_xorpatch-a.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 03-tunnelblick-openvpn_xorpatch-b.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 04-tunnelblick-openvpn_xorpatch-c.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 05-tunnelblick-openvpn_xorpatch-d.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 06-tunnelblick-openvpn_xorpatch-e.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 10-route-gateway-dhcp.diff</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Build OpenVPN with XOR Patch</h3>
+            <p>Install the prerequisites for the build:</p>
+            <blockquote>
+                <code>apt install build-essential libssl-dev iproute2 liblz4-dev liblzo2-dev libpam0g-dev libpkcs11-helper1-dev libsystemd-dev resolvconf pkg-config autoconf
+                automake libtool -y</code>
+            </blockquote>
+            <p>Compile and install OpenVPN with the XOR patch:</p>
+            <blockquote>
+                <code>autoreconf -i -v -f</code>
+            </blockquote>
+            <blockquote>
+                <code>./configure --enable-systemd --enable-async-push --enable-iproute2</code>
+            </blockquote>
+            <blockquote>
+                <code>make</code>
+            </blockquote>
+            <blockquote>
+                <code>make install</code>
+            </blockquote>
+            <p>The program is installed to <code>/usr/local/sbin/openvpn</code>.</p>
+            <h3><a id="1-7"></a>1.7. Create Configuration Directories</h3>
+            <p>Create directories that will store your OpenVPN key, certificate, and configuration files:</p>
+            <blockquote>
+                <code>mkdir -p /etc/openvpn/{server,client}</code>
+            </blockquote>
+            <h3><a id="1-8"></a>1.8. Create Keys and Certificates with EasyRSA</h3>
+            <p>Install the EasyRSA package:</p>
+            <blockquote>
+                <code>apt install easy-rsa -y</code>
+            </blockquote>
+            <p>On Debian 10 and Ubuntu 20.04, this installs EasyRSA 3.0.6.</p>
+            <p>Make a copy of the EasyRSA scripts and configuration files:</p>
+            <blockquote>
+                <code>cp -r /usr/share/easy-rsa ~</code>
+            </blockquote>
+            <blockquote>
+                <code>cd ~/easy-rsa</code>
+            </blockquote>
+            <p>Make a copy of the example variables:</p>
+            <blockquote>
+                <code>cp vars.example vars</code>
+            </blockquote>
+            <p>You can edit the <code>vars</code> file if you wish, but we will just use the defaults. Initialize the public key infrastructure:</p>
+            <blockquote>
+                <code>./easyrsa init-pki</code>
+            </blockquote>
+            <p>Build your Certificate Authority (CA):</p>
+            <blockquote>
+                <code>./easyrsa build-ca nopass</code>
+            </blockquote>
+            <p>Give the CA a common name of your choosing, or just press <strong>Enter</strong> to accept the default name of <code>Easy-RSA CA</code>.</p>
+            <p>Generate and sign your server key and certificate. We use the example server name of <code>server</code> in the example below:</p>
+            <blockquote>
+                <code>./easyrsa gen-req server nopass</code>
+            </blockquote>
+            <blockquote>
+                <code>./easyrsa sign-req server server</code>
+            </blockquote>
+            <blockquote>
+                <code>yes</code>
+            </blockquote>
+            <p>Generate and sign your client key and certificate. We use the example name <code>debian10</code> in the example below. You can change this to a name of your own
+            choosing.</p>
+            <blockquote>
+                <code>./easyrsa gen-req debian10 nopass</code>
+            </blockquote>
+            <blockquote>
+                <code>./easyrsa sign-req client debian10</code>
+            </blockquote>
+            <blockquote>
+                <code>yes</code>
+            </blockquote>
+            <p>Generate the Diffie-Hellman parameters. This can take a long time.</p>
+            <blockquote>
+                <code>./easyrsa gen-dh</code>
+            </blockquote>
+            <p>Generate a preshared key to encrypt the initial exchange:</p>
+            <blockquote>
+                <code>openvpn --genkey secret pki/tls-crypt.key</code>
+            </blockquote>
+            <p>Copy all the keys and certificates into position in the OpenVPN directory:</p>
+            <blockquote>
+                <code>cp pki/ca.crt /etc/openvpn</code>
+            </blockquote>
+            <blockquote>
+                <code>cp pki/private/server.key /etc/openvpn/server</code>
+            </blockquote>
+            <blockquote>
+                <code>cp pki/issued/server.crt /etc/openvpn/server</code>
+            </blockquote>
+            <blockquote>
+                <code>cp pki/private/debian10.key /etc/openvpn/client</code>
+            </blockquote>
+            <blockquote>
+                <code>cp pki/issued/debian10.crt /etc/openvpn/client</code>
+            </blockquote>
+            <blockquote>
+                <code>cp pki/tls-crypt.key /etc/openvpn</code>
+            </blockquote>
+            <blockquote>
+                <code>cp pki/dh.pem /etc/openvpn</code>
+            </blockquote>
+            <h3><a id="1-9"></a>1.9. Generate Scramble Obfuscation Code</h3>
+            <p>For the scrambling obfuscation, generate a 192-bit (24-byte) code, expressed as 32 base-64 characters:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>The example result that we will use in the rest of this article:</p>
+            <blockquote>
+                <code>r7EaFR2DshpQT+QMfQGYO5BXC2BAV8JG</code>
+            </blockquote>
+            <h3><a id="1-10"></a>1.10. Configure OpenVPN Server</h3>
+            <p>Edit the OpenVPN configuration file:</p>
+            <blockquote>
+                <code>vi /etc/openvpn/server.conf</code>
+            </blockquote>
+            <p>The model for you to adapt to your situation is as follows.</p>
+            <ul>
+                <li>Change the random port number <code>16273</code> in the example to your own random port number</li>
+                <li>Change the sample obfuscation code <code>r7EaFR2DshpQT+QMfQGYO5BXC2BAV8JG</code>to your own random code.</li>
+            </ul>
+            <blockquote>
+                <code>port 16273<br>
+                proto udp<br>
+                dev tun<br>
+                ca /etc/openvpn/ca.crt<br>
+                cert /etc/openvpn/server/server.crt<br>
+                key /etc/openvpn/server/server.key<br>
+                dh /etc/openvpn/dh.pem<br>
+                server 10.8.0.0 255.255.255.0<br>
+                ifconfig-pool-persist /etc/openvpn/ipp.txt<br>
+                push "redirect-gateway def1 bypass-dhcp"<br>
+                push "dhcp-option DNS 8.8.8.8"<br>
+                push "dhcp-option DNS 8.8.4.4"<br>
+                keepalive 10 120<br>
+                cipher AES-128-GCM<br>
+                tls-crypt /etc/openvpn/tls-crypt.key<br>
+                persist-key<br>
+                persist-tun<br>
+                status openvpn-status.log<br>
+                verb 3<br>
+                scramble obfuscate r7EaFR2DshpQT+QMfQGYO5BXC2BAV8JG</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="1-11"></a>1.11. Configure Systemd</h3>
+            <p>Create a systemd service file for OpenVPN:</p>
+            <blockquote>
+                <code>vi /lib/systemd/system/openvpn@.service</code>
+            </blockquote>
+            <p>Insert contents like this:</p>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=OpenVPN connection to %i<br>
+                PartOf=openvpn.service<br>
+                ReloadPropagatedFrom=openvpn.service<br>
+                Before=systemd-user-sessions.service<br>
+                After=network-online.target<br>
+                Wants=network-online.target<br>
+                Documentation=man:openvpn(8)<br>
+                Documentation=https://community.openvpn.net/openvpn/wiki/Openvpn24ManPage<br>
+                Documentation=https://community.openvpn.net/openvpn/wiki/HOWTO<br>
+                <br>
+                [Service]<br>
+                Type=notify<br>
+                PrivateTmp=true<br>
+                WorkingDirectory=/etc/openvpn<br>
+                ExecStart=/usr/local/sbin/openvpn --daemon ovpn-%i --status /run/openvpn/%i.status 10 --cd /etc/openvpn --config /etc/openvpn/%i.conf --writepid
+                /run/openvpn/%i.pid<br>
+                PIDFile=/run/openvpn/%i.pid<br>
+                KillMode=process<br>
+                ExecReload=/bin/kill -HUP $MAINPID<br>
+                CapabilityBoundingSet=CAP_IPC_LOCK CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_CHROOT CAP_DAC_OVERRIDE CAP_AUDIT_WRITE<br>
+                LimitNPROC=100<br>
+                DeviceAllow=/dev/null rw<br>
+                DeviceAllow=/dev/net/tun rw<br>
+                ProtectSystem=true<br>
+                ProtectHome=true<br>
+                RestartSec=5s<br>
+                Restart=on-failure<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <p>Create the directory for the process identification (pid) file:</p>
+            <blockquote>
+                <code>mkdir /run/openvpn</code>
+            </blockquote>
+            <h3><a id="1-12"></a>1.12. Start OpenVPN</h3>
+            <p>Start OpenVPN on the server:</p>
+            <blockquote>
+                <code>systemctl enable openvpn@server</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start openvpn@server</code>
+            </blockquote>
+            <p>Check that it is active and listening on the expected port:</p>
+            <blockquote>
+                <code>systemctl status openvpn@server</code>
+            </blockquote>
+            <blockquote>
+                <code>ss -tulpn | grep openvpn</code>
+            </blockquote>
+            <p>Server work is done:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Set Up Client</h2>
+            <h3><a id="2-1"></a>2.1. Download Keys and Certificates</h3>
+            <p>Now go to work on your PC. Assuming that your server has IP address <code>yy.yy.yy.yy</code> and that you named the client key and certificate
+            <code>debian10.*</code>, copy the required files down from the server to the client like this:</p>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:/etc/openvpn/client/debian10.key ~/Downloads/debian10.key</code>
+            </blockquote>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:/etc/openvpn/client/debian10.crt ~/Downloads/debian10.crt</code>
+            </blockquote>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:/etc/openvpn/ca.crt ~/Downloads/ca.crt</code>
+            </blockquote>
+            <blockquote>
+                <code>scp root@yy.yy.yy.yy:/etc/openvpn/tls-crypt.key ~/Downloads/tls-crypt.key</code>
+            </blockquote>
+            <h3><a id="2-2"></a>2.2. Get OpenVPN and XOR Patch Source</h3>
+            <p>For a Debian/Ubuntu client, this is the pretty much same process as on the server. The version number of OpenVPN and the XOR patch will be the same as on the
+            server. We will use <code>v2.5_beta3</code> in our examples, though you may need to replace this.</p>
+            <p>Download the OpenVPN tarball for your version:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/OpenVPN/openvpn/archive/v2.5_beta3.tar.gz</code>
+            </blockquote>
+            <blockquote>
+                <code>tar -xvf v2.5_beta3.tar.gz</code>
+            </blockquote>
+            <p>Download the Tunnelblick repository:</p>
+            <blockquote>
+                <code>wget https://github.com/Tunnelblick/Tunnelblick/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <h3><a id="2-3"></a>2.3. Apply Patches</h3>
+            <p>Copy the patch files into the OpenVPN directory, replacing <code>openvpn-2.5_beta3</code> by the current version:</p>
+            <blockquote>
+                <code>cp Tunnelblick-master/third_party/sources/openvpn/openvpn-2.5_beta3/patches/*.diff openvpn-2.5_beta3</code>
+            </blockquote>
+            <p>Apply the patches to the OpenVPN source:</p>
+            <blockquote>
+                <code>cd openvpn-2.5_beta3</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install patch -y</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 02-tunnelblick-openvpn_xorpatch-a.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 03-tunnelblick-openvpn_xorpatch-b.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 04-tunnelblick-openvpn_xorpatch-c.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 05-tunnelblick-openvpn_xorpatch-d.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 06-tunnelblick-openvpn_xorpatch-e.diff</code>
+            </blockquote>
+            <blockquote>
+                <code>patch -p1 &lt; 10-route-gateway-dhcp.diff</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4. Build OpenVPN with XOR Patch</h3>
+            <p>Install the prerequisites for the build:</p>
+            <blockquote>
+                <code>sudo apt install build-essential libssl-dev iproute2 liblz4-dev liblzo2-dev libpam0g-dev libpkcs11-helper1-dev libsystemd-dev resolvconf pkg-config autoconf
+                automake libtool -y</code>
+            </blockquote>
+            <p>Compile and install OpenVPN with the XOR patch:</p>
+            <blockquote>
+                <code>autoreconf -i -v -f</code>
+            </blockquote>
+            <blockquote>
+                <code>./configure --enable-systemd --enable-async-push --enable-iproute2</code>
+            </blockquote>
+            <blockquote>
+                <code>make</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo make install</code>
+            </blockquote>
+            <p>The program is installed to <code>/usr/local/sbin/openvpn</code>.</p>
+            <h3><a id="2-5"></a>2.5. Fix DNS Resolution</h3>
+            <p>There is a problem with the pushed DNS servers being ignored in OpenVPN on Linux. The solution depends on what is managing the nameservers. Here is a solution that
+            worked on a Debian 10 client with NetworkManager. There is an alternative solution for <a href="https://blog.syddel.uk/?p=253" target="_blank">Ubuntu with Systemd</a>.</p>
+            <p>Edit the NetworkManager configuration:</p>
+            <blockquote>
+                <code>sudo vi /etc/NetworkManager/NetworkManager.conf</code>
+            </blockquote>
+            <p>In the <code>[main]</code> section, insert a line:</p>
+            <blockquote>
+                <code>dns=none</code>
+            </blockquote>
+            <p>Save the file. Then edit the <code>/etc/resolv.conf</code> file:</p>
+            <blockquote>
+                <code>sudo vi /etc/resolv.conf</code>
+            </blockquote>
+            <p>Change the contents of the file to specify nameservers that will be accessible while the VPN is on, e.g.:</p>
+            <blockquote>
+                <code>nameserver 8.8.8.8<br>
+                nameserver 8.8.4.4</code>
+            </blockquote>
+            <p>Save the file. Restart NetworkManager:</p>
+            <blockquote>
+                <code>sudo systemctl restart NetworkManager</code>
+            </blockquote>
+            <h3><a id="2-6"></a>2.6. Create OpenVPN Client Configuration File</h3>
+            <p>Create a client configuration file for OpenVPN:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>vi debian10.conf</code>
+            </blockquote>
+            <p>Insert the configuration details below, tailoring them to your situation:</p>
+            <ul>
+                <li>Replace <code>yy.yy.yy.yy</code> by the public IP address of your server</li>
+                <li>Replace <code>16273</code> by your random port</li>
+                <li>Replace <code>r7EaFR2DshpQT+QMfQGYO5BXC2BAV8JG</code> by your random obfuscation code</li>
+            </ul>
+            <blockquote>
+                <code>client<br>
+                dev tun<br>
+                proto udp<br>
+                remote yy.yy.yy.yy 16273<br>
+                resolv-retry infinite<br>
+                nobind<br>
+                persist-key<br>
+                persist-tun<br>
+                ca ca.crt<br>
+                cert debian10.crt<br>
+                key debian10.key<br>
+                remote-cert-tls server<br>
+                cipher AES-128-GCM<br>
+                tls-crypt tls-crypt.key<br>
+                verb 3<br>
+                scramble obfuscate r7EaFR2DshpQT+QMfQGYO5BXC2BAV8JG</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="2-7"></a>2.7. Start OpenVPN Client</h3>
+            <p>Open a terminal on your client PC, and start OpenVPN running:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo /usr/local/sbin/openvpn --config debian10.conf</code>
+            </blockquote>
+            <p>Leave the terminal open with OpenVPN running in it.</p>
+            <h3><a id="2-8"></a>2.8. Test End-to-End</h3>
+            <p>Open Firefox.</p>
+            <p>Visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p>
+            <p>You should see the IP address of your remote server, not your local client.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <ul>
+                <li>For OpenVPN questions, post in the <a href="https://forums.openvpn.net/" target="_blank">OpenVPN forum</a>
+                </li>
+                <li>There is a Tunnelblick discussion group on <a href="https://groups.google.com/g/tunnelblick-discuss" target="_blank">Google Groups</a>
+                </li>
+            </ul>
+            <p><em>Updated 2020-09</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenConnect</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>OpenConnect</h1>
+            <p>OpenConnect works in some countries that practice censorship. It uses HTTP and HTTPS to make the connection, then attempts to switch to UDP for the actual
+            transport.</p>
+            <p>The software was originally designed to be compatible with Cisco AnyConnect SSL VPN. Support was later added for compatibility with Juniper SSL VPN and Pulse
+            Connect Secure.</p>
+            <p>This article shows you how to install OpenConnect on CentOS 8 or Debian 10+ servers. Note that CentOS 8 reaches end-of-life on December 31, 2021.</p>
+            <p>The article ends with some pointers to OpenConnect clients.</p>
+            <p>You will need a server with a registered domain name (free or paid) if you want to follow along. We give the server hostname as <code>vpn.yyyyy.xyz</code> in our
+            examples. You will need to change this to whatever your actual hostname is.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Install and Configure Firewall</h3>
+            <p>If your server runs CentOS 8, install a firewall and configure it to accept traffic on ports 80/tcp, 443/tcp, and 443/udp like this. Install and start the
+            firewall:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install firewalld -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start firewalld</code>
+            </blockquote>
+            <p>Add the firewall rules for ports <code>80</code> and <code>443</code>, and masquerade the outgoing source IP address:</p>
+            <blockquote>
+                <code>firewall-cmd --add-service=http</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-service=https</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-port=443/udp</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --add-masquerade</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <p>For better security, restrict port 22 access to trusted IP addresses only. For example, if you always log in from IP address <code>xx.xx.xx.xx</code>, make that the
+            only IP address that will be trusted for SSH access:</p>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-source=xx.xx.xx.xx/32</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=cockpit</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <p>If your server runs Debian 10+ or Ubuntu, install and configure your firewall like this. Install and start the firewall:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>Add the basic firewall rules:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol icmp counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip6 nexthdr icmpv6 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport { http, https } counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport https counter accept</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better. For example, if your workstation always has IP address <code>xx.xx.xx.xx</code>:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 ip saddr xx.xx.xx.xx/32 counter accept</code>
+            </blockquote>
+            <p>If you cannot predict your workstation IP address, you will have to open port <code>22</code> to the whole world.</p>
+            <p>Drop unexpected traffic:</p>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Carry out network address translation (nat), and masquerade the IP address on outbound packets:</p>
+            <blockquote>
+                <code>nft add table nat</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat prerouting { type nat hook prerouting priority 0 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add chain nat postrouting { type nat hook postrouting priority 100 \; }</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule nat postrouting ip saddr 10.0.8.0/24 masquerade</code>
+            </blockquote>
+            <p>Save these firewall rules:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Allow Forwarding</h3>
+            <p>Now enable packet forwarding in the Linux kernel.</p>
+            <p>On CentOS, create a new configuration file in <code>/usr/lib/sysctl.d</code>:</p>
+            <blockquote>
+                <code>vi /usr/lib/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <p>On Debian or Ubuntu, create a new configuration file in <code>/etc/sysctl.d</code>:</p>
+            <blockquote>
+                <code>vi /etc/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <p>In either case, insert a single line:</p>
+            <blockquote>
+                <code>net.ipv4.ip_forward=1</code>
+            </blockquote>
+            <p>Save the file. Make this change effective immediately. On CentOS:</p>
+            <blockquote>
+                <code>sysctl -p /usr/lib/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/40-ipv4-forward.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install Let’s Encrypt Client</h3>
+            <p>On CentOS 8:</p>
+            <blockquote>
+                <code>yum install epel-release -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install certbot -y</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install certbot -y</code>
+            </blockquote>
+            <p>In either case, request your certificate as follows. Replace <code>vpn.yyyyy.xyz</code> in the next command by your actual hostname:</p>
+            <blockquote>
+                <code>certbot certonly --standalone --agree-tos --register-unsafely-without-email -d vpn.yyyyy.xyz</code>
+            </blockquote>
+            <p>Your certificate is stored at <code>/etc/letsencrypt/live/vpn.yyyyy.xyz/fullchain.pem</code>, and its private key is stored at
+            <code>/etc/letsencrypt/live/vpn.yyyyy.xyz/privkey.pem</code>.</p>
+            <p>Set up the timer for regular checks for renewal. On CentOS 8:</p>
+            <blockquote>
+                <code>echo "0 0,12 * * * root python3 -c 'import random; import time; time.sleep(random.random() * 3600)' &amp;& certbot renew -q" | sudo tee -a /etc/crontab &gt;
+                /dev/null</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>certbot renew --dry-run</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Install OpenConnect on Server</h3>
+            <p>Install the OpenConnect package. On CentOS 8:</p>
+            <blockquote>
+                <code>yum install ocserv -y</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install ocserv -y</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Configure OpenConnect on Server</h3>
+            <p>Edit the OpenConnect configuration file:</p>
+            <blockquote>
+                <code>vi /etc/ocserv/ocserv.conf</code>
+            </blockquote>
+            <p>Make the following changes. Refer to the <a href="https://ocserv.gitlab.io/www/manual.html" target="_blank">OpenConnect manual on GitLab</a> if you want to
+            understand the options available to you.</p>
+            <ul>
+                <li>Enable authetication by password file by changing the authentication to <code>auth = "plain[passwd=/etc/ocserv/ocpasswd]"</code></li>
+                <li>Change the server certificate and private key locations to <code>/etc/letsencrypt/live/vpn.yyyyy.xyz/fullchain.pem</code> and
+                <code>/etc/letsencrypt/live/vpn.yyyyy.xyz/privkey.pem</code>, replacing <code>vpn.yyyyy.xyz</code> by your actual hostname</li>
+                <li>Comment out or remove the line for <code>ca-cert</code>, since we are not using certificate authentication for clients</li>
+                <li>In the <code>default-domain</code> line, put your actual domain name</li>
+                <li>Specify the virtual IP address range for your VPN, for example <code>ipv4-network = 10.0.8.0</code> and <code>ipv4-netmask = 255.255.255.0</code></li>
+                <li>If you want DNS resolution on the server rather than at clients, insert a line <code>tunnel-all-dns = true</code> and specify two DNS servers, e.g. <code>dns =
+                8.8.8.8</code> and <code>dns = 8.8.4.4</code></li>
+                <li>If clients need to access their LAN without going through the server, then specify that the LAN subnet should not be routed through the tunnel, for example
+                <code>no-route = 192.168.0.0/255.255.0.0</code> (and delete the <code>route</code> lines</li>
+            </ul>
+            <p>If you find the comments and blank lines in the configuration file helpful, then leave them in. If you want to remove comments and blank lines with the
+            <code>vi</code> editor, then issue global commands to delete lines that begin with <code>#</code> or are blank:</p>
+            <blockquote>
+                <code>:g/^#/d</code>
+            </blockquote>
+            <blockquote>
+                <code>:g/^$/d</code>
+            </blockquote>
+            <p>Here is an example of a completed OpenConnect configuration file for CentOS 8:</p>
+            <blockquote>
+                <code>auth = "plain[passwd=/etc/ocserv/ocpasswd]"<br>
+                tcp-port = 443<br>
+                udp-port = 443<br>
+                run-as-user = ocserv<br>
+                run-as-group = ocserv<br>
+                socket-file = ocserv.sock<br>
+                chroot-dir = /var/lib/ocserv<br>
+                server-cert = /etc/letsencrypt/live/vpn.yyyyy.xyz/fullchain.pem<br>
+                server-key = /etc/letsencrypt/live/vpn.yyyyy.xyz/privkey.pem<br>
+                isolate-workers = true<br>
+                max-clients = 16<br>
+                max-same-clients = 2<br>
+                server-stats-reset-time = 604800<br>
+                keepalive = 32400<br>
+                dpd = 90<br>
+                mobile-dpd = 1800<br>
+                switch-to-tcp-timeout = 25<br>
+                try-mtu-discovery = false<br>
+                cert-user-oid = 0.9.2342.19200300.100.1.1<br>
+                tls-priorities = "@SYSTEM:%SERVER_PRECEDENCE"<br>
+                auth-timeout = 240<br>
+                min-reauth-time = 300<br>
+                max-ban-score = 80<br>
+                ban-reset-time = 1200<br>
+                cookie-timeout = 300<br>
+                deny-roaming = false<br>
+                rekey-time = 172800<br>
+                rekey-method = ssl<br>
+                use-occtl = true<br>
+                pid-file = /var/run/ocserv.pid<br>
+                device = vpns<br>
+                predictable-ips = true<br>
+                default-domain = yyyyy.xyz<br>
+                ipv4-network = 10.0.8.0<br>
+                ipv4-netmask = 255.255.255.0<br>
+                tunnel-all-dns = true<br>
+                dns = 8.8.8.8<br>
+                dns = 8.8.4.4<br>
+                ping-leases = false<br>
+                no-route = 192.168.0.0/255.255.0.0<br>
+                cisco-client-compat = true<br>
+                dtls-legacy = true</code>
+            </blockquote>
+            <p>And here is an example of a completed OpenConnect configuration file for Debian 10+ or Ubuntu:</p>
+            <blockquote>
+                <code>auth = "plain[passwd=/etc/ocserv/ocpasswd]"<br>
+                tcp-port = 443<br>
+                udp-port = 443<br>
+                run-as-user = nobody<br>
+                run-as-group = daemon<br>
+                socket-file = /run/ocserv.socket<br>
+                server-cert = /etc/letsencrypt/live/vpn.yyyyy.xyz/fullchain.pem<br>
+                server-key = /etc/letsencrypt/live/vpn.yyyyy.xyz/privkey.pem<br>
+                isolate-workers = true<br>
+                max-clients = 128<br>
+                max-same-clients = 2<br>
+                server-stats-reset-time = 604800<br>
+                keepalive = 300<br>
+                dpd = 60<br>
+                mobile-dpd = 300<br>
+                switch-to-tcp-timeout = 30<br>
+                try-mtu-discovery = false<br>
+                cert-user-oid = 0.9.2342.19200300.100.1.1<br>
+                compression = true<br>
+                no-compress-limit = 256<br>
+                tls-priorities = "NORMAL:%SERVER_PRECEDENCE:%COMPAT:-RSA:-VERS-SSL3.0:-ARCFOUR-128"<br>
+                auth-timeout = 240<br>
+                idle-timeout = 1200<br>
+                mobile-idle-timeout = 1800<br>
+                min-reauth-time = 3<br>
+                max-ban-score = 50<br>
+                ban-reset-time = 300<br>
+                cookie-timeout = 300<br>
+                deny-roaming = false<br>
+                rekey-time = 172800<br>
+                rekey-method = ssl<br>
+                use-occtl = true<br>
+                pid-file = /run/ocserv.pid<br>
+                device = vpns<br>
+                predictable-ips = true<br>
+                default-domain = yyyyy.xyz<br>
+                ipv4-network = 10.0.8.0<br>
+                ipv4-netmask = 255.255.255.0<br>
+                tunnel-all-dns = true<br>
+                dns = 8.8.8.8<br>
+                dns = 8.8.4.4<br>
+                ping-leases = falsereboot<br>
+                no-route = 192.168.0.0/255.255.0.0<br>
+                cisco-client-compat = true<br>
+                dtls-legacy = true</code>
+            </blockquote>
+            <p>After making these changes, save your amended configuration file.</p>
+            <h3><a id="1-6"></a>1.6. Add Client Users</h3>
+            <p>For each user, set up a username and password, using the command below as a model, and replacing <code>john</code> by your actual username:</p>
+            <blockquote>
+                <code>ocpasswd -c /etc/ocserv/ocpasswd john</code>
+            </blockquote>
+            <p>When prompted, enter and reenter the password for user john. For example:</p>
+            <blockquote>
+                <code>nq3vwr766zqmj4da</code>
+            </blockquote>
+            <blockquote>
+                <code>nq3vwr766zqmj4da</code>
+            </blockquote>
+            <p>You can repeat this process if you have multiple users.</p>
+            <h3><a id="1-7"></a>1.7. Start OpenConnect Server</h3>
+            <p>Now restart OpenConnect with your revised configuration.</p>
+            <p>On CentOS 8:</p>
+            <blockquote>
+                <code>systemctl enable ocserv</code>
+            </blockquote>
+            <blockquote>
+                <code>ystemctl start ocserv</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>systemctl restart ocserv</code>
+            </blockquote>
+            <p>Check that OpenConnect is active and running:</p>
+            <blockquote>
+                <code>systemctl status ocserv</code>
+            </blockquote>
+            <p>You may get an error saying, <code>error connecting to sec-mod socket 'ocserv.sock.xxxxxxxx': No such file or directory</code>. This does not seem to make any
+            difference, as the file gets created anyway. You can check that OpenConnect is listening on ports <code>443/tcp</code> and <code>443/udp</code> with the command:</p>
+            <blockquote>
+                <code>ss -tulpn | grep ocserv</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Clients</h2>
+            <h3><a id="2-1"></a>2.1. Linux</h3>
+            <p>OpenConnect in NetworkManager has been integrated with GNOME. On CentOS 8 clients, install the package and its dependencies:</p>
+            <blockquote>
+                <code>sudo yum install epel-release -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo yum install NetworkManager-openconnect-gnome -y</code>
+            </blockquote>
+            <p>On Debian 10+ or Ubuntu, install the package and its dependencies:</p>
+            <blockquote>
+                <code>sudo apt install network-manager-openconnect-gnome -y</code>
+            </blockquote>
+            <p>In either case, add your VPN configuration from the GNOME <strong>Settings</strong> &gt; <strong>Network</strong> page.</p><img src=
+            "../images/openconnect-network.png" alt="GNOME desktop Network settings page">
+            <ul>
+                <li>Type is <strong>Multi-protocol VPN client (openconnect)</strong> or <strong>Cisco AnyConnect Compatible</strong></li>
+                <li>Name as desired, e.g. <code>New York</code></li>
+                <li>Protocol is <strong>Cisco AnyConnect</strong> or <strong>openconnect</strong></li>
+                <li>Gateway is your server hostname, e.g. <code>vpn.yyyyy.xyz</code> in our example</li>
+            </ul><img src="../images/openconnect-add-vpn.png" alt="Adding a VPN in GNOME desktop">
+            <p>Click <strong>Add</strong> to add the new VPN.</p>
+            <p>Toggle the connection to the <strong>ON</strong> position. Enter your username. Enter your password. Check <strong>Save passwords</strong>. Click
+            <strong>Login</strong>.</p><img src="../images/openconnect-logged-in.png" alt="OpenConnect after logging in on GNOME desktop">
+            <h3><a id="2-2"></a>2.2. Windows</h3>
+            <p>Install the OpenConnect GUI for Windows from <a href="https://openconnect.github.io/openconnect-gui" target="_blank">GitHub</a>.</p>
+            <h3><a id="2-3"></a>2.3. Android</h3>
+            <p>For Android devices, install OpenConnect by Digital Software Group from the <a href="https://play.google.com/store/apps/details?id=com.github.digitalsoftwaresolutions.openconnect" target="_blank">Google Play Store</a>.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>You can ask questions and raise issues in these two places:</p>
+            <ul>
+                <li>On the <a href="http://lists.infradead.org/mailman/listinfo/openconnect-devel" target="_blank">Mailing list</a>
+                </li>
+                <li>In the <a href="https://gitlab.com/openconnect/openconnect/-/issues" target="_blank">GitLab issues</a> section
+                </li>
+            </ul>
+            <p><em>Updated 2021-06-18</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

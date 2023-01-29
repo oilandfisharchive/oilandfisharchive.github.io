@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shadowsocks-Rust on AlmaLinux Using Teddysun Repo</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Shadowsocks-Rust on AlmaLinux Using Teddysun Repo</h1>
+            <p>In 2020 Red Hat announced that development of CentOS would be discontinued and support would end earlier than planned. The responses to this news include the launch
+            of AlmaLinux and Rocky Linux, both of which aim for binary compatibility with the current version of Red Hat Enterprise Linux (RHEL). From Red Hat itself comes CentOS
+            Stream, a rolling release used by Red Hat to preview what is intended for inclusion in updates to RHEL.</p>
+            <p>Some users prefer RHEL-compatible versions of Linux for their stability. This post shows you how to install Shadowsocks-Rust on an AlmaLinux 8 server using the
+            Teddysun repository. With this repository, Shadowsocks-Rust and other proxy servers can be installed with a single command, which will automatically resolve
+            dependencies and do much of the set-up. As well as working on AlmaLinux 8, a similar procedure will also work on Rocky Linux 8 and CentOS Stream 8 plus later releases.
+            For full instructions on the other capabilities of the Teddysun repo, see the original blog post at <a href="https://teddysun.com/666.html" target="_blank">https://teddysun.com/666.html</a>.</p>
+            <p>We end this post with installation of a sample Shadowsocks client, which in this example runs the Windows operating system.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Generate Port Number and Password</h3>
+            <p>You will need an unusual port number and a strong password for your Shadowsocks server. First generate a random port number like this:</p>
+            <blockquote>
+                <code>echo $((1024 + $RANDOM))</code>
+            </blockquote>
+            <p>The shell function RANDOM gives you a pseudo-random integer between 0 and 32767, so after evaluating the arithmetical expression, you will end up with a port number
+            between 1024 and 33791. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>27173</code>
+            </blockquote>
+            <p>Also generate a random password:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>The <code>openssl rand -base64</code> function gives you a random number, expressed in base-64 notation. Because of the argument <code>24</code>, it will be based
+            on 24 bytes or 192 bits. The result will have 32 base-64 characters. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>kZAHHHT1BcefPZ8FEWdgsjEl1D8TXU25</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Open Firewall</h3>
+            <p>A server firewall is recommended but optional. To install <code>firewalld</code>, issue each of the following commands as root:</p>
+            <blockquote>
+                <code>yum update</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable firewalld</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start firewalld</code>
+            </blockquote>
+            <p>You must protect your SSH port! For better security, restrict port 22 access to trusted IP addresses only. For example, if you always log in from IP address
+            <code>xx.xx.xx.xx</code>, make that is the only IP address that will be trusted for SSH access:</p>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-source=xx.xx.xx.xx/32</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=trusted --add-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=ssh</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --zone=public --remove-service=cockpit</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <p>Open the port you will use for Shadowsocks:</p>
+            <blockquote>
+                <code>firewall-cmd --zone=public --add-port=27173/tcp</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --runtime-to-permanent</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Add EPEL Dependency</h3>
+            <p>The Extra Packages for Enterprise Linux (EPEL) repository must be installed first:</p>
+            <blockquote>
+                <code>yum install yum-utils epel-release</code>
+            </blockquote>
+            <blockquote>
+                <code>yum-config-manager --enable epel</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Add Teddysun Repo</h3>
+            <p>Run the following command to add <code>teddysun.repo</code> repository:</p>
+            <blockquote>
+                <code>yum-config-manager --add-repo https://dl.lamp.sh/shadowsocks/teddysun.repo</code>
+            </blockquote>
+            <p>Issuing the command <code>yum repolist</code> should now include repo id <code>teddysun</code> with repo name <code>Teddysun Linux Repository for EL 8</code>.</p>
+            <p>To rebuild the repository cache, execute the following command:</p>
+            <blockquote>
+                <code>yum makecache</code>
+            </blockquote>
+            <p>List available packages:</p>
+            <blockquote>
+                <code>yum repo-pkgs teddysun list</code>
+            </blockquote>
+            <p>The response should now include the packages:</p>
+            <ul>
+                <li><code>go-shadowsocks2.x86_64</code></li>
+                <li><code>libshadowsocks-libev.x86_64</code></li>
+                <li><code>shadowsocks-libev.x86_64</code></li>
+                <li><code>shadowsocks-libev-devel.x86_64</code></li>
+                <li><code>shadowsocks-rust.x86_64</code></li>
+                <li><code>v2ray-plugin.x86_64</code></li>
+                <li><code>xray-plugin.x86_64</code></li>
+            </ul>
+            <h3><a id="1-5"></a>1.5. Install Packages</h3>
+            <p>Install the Shadowsocks-Rust package from the Teddysun repository through <code>yum</code>:</p>
+            <blockquote>
+                <code>yum install shadowsocks-rust</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Configure Shadowsocks Server</h3>
+            <p>Edit the configuration file <code>/etc/shadowsocks/shadowsocks-rust-config.json</code> using your favorite editor. We will use the <code>vi</code> editor as our
+            example.</p>
+            <blockquote>
+                <code>vi /etc/shadowsocks/shadowsocks-rust-config.json</code>
+            </blockquote>
+            <p>Delete the existing contents and insert the following template:</p>
+            <pre>{
+   "server": "0.0.0.0",
+   "server_port": 27173,
+   "password": "kZAHHHT1BcefPZ8FEWdgsjEl1D8TXU25",
+   "timeout": 300,
+   "method": "chacha20-ietf-poly1305",
+   "mode": "tcp_only",
+   "fast_open": false
+}
+</pre>
+            <p>Make appropriate changes to the template:</p>
+            <ul>
+                <li>Change the server port to your generated value</li>
+                <li>Change the password to your generated value</li>
+                <li>Optionally change the encryption method, using only an AEAD cipher</li>
+            </ul>
+            <p>Write the JSON configuration file to disk, and quit the editor.</p>
+            <h3><a id="1-7"></a>1.7. Start Shadowsocks-Rust Server</h3>
+            <p>Start Shadowsocks-Rust after every reboot, and also start it right now:</p>
+            <blockquote>
+                <code>systemctl enable shadowsocks-rust-server</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start shadowsocks-rust-server</code>
+            </blockquote>
+            <p>Check that Shadowsocks-Rust is active and running:</p>
+            <blockquote>
+                <code>systemctl status shadowsocks-rust-server</code>
+            </blockquote>
+            <p>Check that Shadowsocks-Rust (<code>ssserver</code>) is listening on the expected port, which in our example is port <code>27173</code>:</p>
+            <blockquote>
+                <code>ss -tulpn | grep 27173</code>
+            </blockquote>
+            <p>Your work on the server is done now, so exit your SSH session:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Client</h2>
+            <p>Shadowsocks clients are available for Linux, Windows, macOS, Android, iOS, and OpenWRT. We will use Windows in the example that follows.</p>
+            <p>For simple cases, you can use the C# GUI client for Windows. (For more complex cases using the latest features, you would need to use the command-line client for
+            Windows from <a href="https://github.com/shadowsocks/shadowsocks-rust/releases" target="_blank">https://github.com/shadowsocks/shadowsocks-rust/releases</a>.)</p>
+            <p>Download and unzip the Windows client from <a href="https://github.com/shadowsocks/shadowsocks-windows/releases" target="_blank">GitHub</a>. At the time of writing,
+            this is <code>Shadowsocks-4.4.1.0.zip</code>.</p><img src="../images/ss-rust-al-windows-github.png" alt="Shadowsocks C# for Windows client download from GitHub">
+            <p>Open Windows PowerShell on your PC. Issue the command:</p>
+            <blockquote>
+                <code>Get-FileHash -Algorithm SHA256 -Path Downloads\Shadowsocks-4.4.1.0.zip</code>
+            </blockquote>
+            <p>Make sure that the displayed hash for the <code>zip</code> file matches the expected value displayed on GitHub. In our example, that is
+            <code>62b74a688d22bfdf20f673a351580029d7b9de67c6facc9a5613b22b3f798968</code>.</p>
+            <p>Once you have verified the file hash, close PowerShell, and unzip the zip file.</p><img src="../images/ss-rust-al-windows-edit-servers.png" alt=
+            "Shadowsocks C# for Windows client configuration of server">
+            <p>Launch and configure the client as follows:</p>
+            <ol>
+                <li>Launch the program <code>Shadowsocks.exe</code>. If Windows Defender SmartScreen prevents it from running, then click <strong>More info</strong> and
+                <strong>Run anyway</strong>.</li>
+                <li>On the <strong>Edit Servers</strong> screen, enter details which match those of the server, and click <strong>Apply</strong>.</li>
+                <li>Click <strong>OK</strong>.</li>
+                <li>The Shadowsocks for Windows C# GUI client continues to run in the system tray. The is the area on the right side of the taskbar, toward the bottom right of
+                your Windows desktop. The Shadowsocks icon looks like a paper airplane.</li>
+                <li>Right-click on the Shadowsocks icon to bring up the context menu.</li>
+                <li>Select <strong>System Proxy</strong> and set the value to <strong>Global</strong>.</li>
+                <li>Optionally, confirm that the system proxy is on by going to <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt; <strong>Proxy</strong> &gt;
+                <strong>Manual proxy setup</strong>. It should show that the proxy server toggle is on, for address <code>http://localhost</code> and port <code>1080</code>.</li>
+            </ol><img src="../images/ss-rust-al-windows-system-proxy-global.png" alt="Shadowsocks C# for Windows client set to System Proxy Global mode">
+            <p>Check the end-to-end functionality to confirm that Shadowsocks C# GUI and your system proxy settings are configured correctly. Open a browser and visit one or more
+            of these sites:</p>
+            <ul>
+                <li>
+                    <a href="https://www.iplocation.net/" target="_blank">IP Location</a>
+                </li>
+                <li>
+                    <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>
+                </li>
+                <li>
+                    <a href="https://www.ipip.net/" target="_blank">IP IP</a>
+                </li>
+            </ul>
+            <p>In all cases, you should see the IP address of the server, not your local client.</p>
+            <p>When you are done browsing, quit Shadowsocks from the context menu in the system tray.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>If you discover an issue with Shadowsocks, report it on the official GitHub issues page for the project:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-rust/issues" target="_blank">Shadowsocks-Rust</a>
+                </li>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-windows/issues" target="_blank">Shadowsocks for Windows</a>
+                </li>
+            </ul>
+            <p><em>Updated 2022-07-04</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VPN Chains</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>VPN Chains</h1>
+            <p>The earliest mention I can find of VPN chains is a <a href="https://secure-computing.net/wiki/index.php/OpenVPN/VpnChains" target="_blank">2010 article</a> by Eric
+            Crist. That article envisaged a literal chain, in which one client connects to a server, which in turn connects to a further server, and on. It did not give any
+            practical details.</p>
+            <p>The interest in VPN chains since then has been more in tunneling one connection through another. In particular, the question of how to build a tunnel through a
+            tunnel was raised in a <a href="https://forums.openvpn.net/viewtopic.php?t=7483" target="_blank">2011 forum thread</a> started by Bebop. A finished set of bash scripts
+            was posted on <a href="https://sourceforge.net/p/vpnchains/wiki/Home" target="_blank">SourceForge</a> in 2012 by br41n. In 2017, the scripts were added to <a href="https://github.com/TensorTom/VPN-Chain" target="_blank">GitHub</a> by TensorTom. These inspired Mirimir to create an alternative set of <a href="https://github.com/mirimir/vpnchains" target="_blank">bash scripts</a> in 2019.</p>
+            <p>A VPN chain disguises your destination from your ISP and VPN1, and disguises your origin from VPN2 and your final destination website. If your goal is anonymity,
+            you will likely use commercial VPN services who accept anonymous payment. However, for demonstration purposes we will build our own VPN servers from scratch.</p>
+            <p>The two servers and one client in this demonstration all run Debian 10. We will give the IP addresses of the two OpenVPN servers as <code>11.11.11.11</code> and
+            <code>22.22.22.22</code> respectively. We also refer to them as VPN1 and VPN2.</p>
+            <h2><a id="1"></a>1. Set Up Servers</h2>
+            <h3><a id="1-1"></a>1.1. Create VPN1 Server</h3>
+            <p>Since this article is not primarily about VPN server configuration, we will go through this quickly. Install a basic firewall on your server:</p>
+            <blockquote>
+                <code>iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p icmp -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 22 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -P INPUT DROP</code>
+            </blockquote>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install iptables-persistent -y</code>
+            </blockquote>
+            <p>Install OpenVPN using a prewritten script:</p>
+            <blockquote>
+                <code>apt install curl -y</code>
+            </blockquote>
+            <blockquote>
+                <code>curl -O https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x openvpn-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./openvpn-install.sh</code>
+            </blockquote>
+            <p>When the script asks you questions, you can the defaults all the way through, unless you have some reason to change them. When it asks for the name of a client,
+            call it <code>vpn1</code>. This results in the script creating a client configuration file named <code>vpn1.ovpn</code>.</p>
+            <p>For clarity, and so that we do not end up with overlapping virtual address ranges, we will change the IP addresses given out by the OpenVPN server. Edit the server
+            configuration file:</p>
+            <blockquote>
+                <code>vi /etc/openvpn/server.conf</code>
+            </blockquote>
+            <p>Change the address range to <code>10.8.1.0/24</code>:</p>
+            <blockquote>
+                <code>server 10.8.1.0 255.255.255.0</code>
+            </blockquote>
+            <p>Save the file. Also edit the iptables rules created when the server comes up, and make the corresponding change there:</p>
+            <blockquote>
+                <code>vi /etc/iptables/add-openvpn-rules.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -t nat -I POSTROUTING 1 -s 10.8.1.0/24 -o eth0 -j MASQUERADE</code>
+            </blockquote>
+            <p>Save the file. Do the same thing when the iptables rules are deleted when the server goes down:</p>
+            <blockquote>
+                <code>vi /etc/iptables/rm-openvpn-rules.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -t nat -D POSTROUTING -s 10.8.1.0/24 -o eth0 -j MASQUERADE</code>
+            </blockquote>
+            <p>Save the file. At this point, it’s cleanest to simply reboot:</p>
+            <blockquote>
+                <code>reboot</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Create VPN2 Server</h3>
+            <p>This is pretty much the same procedure as the VPN1 server, with some small changes. Create the basic firewall:</p>
+            <blockquote>
+                <code>iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p icmp -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 22 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -P INPUT DROP</code>
+            </blockquote>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install iptables-persistent -y</code>
+            </blockquote>
+            <p>Install OpenVPN using the script:</p>
+            <blockquote>
+                <code>apt install curl -y</code>
+            </blockquote>
+            <blockquote>
+                <code>curl -O https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x openvpn-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./openvpn-install.sh</code>
+            </blockquote>
+            <p>You can leave the server operating on port 1194 by UDP. Name the client <code>vpn2</code>. This creates a file on this server named <code>vpn2.ovpn</code>.</p>
+            <p>To avoid confusion, we will use the range <code>10.8.2.0/24</code> for VPN2. Edit the server configuration file:</p>
+            <blockquote>
+                <code>vi /etc/openvpn/server.conf</code>
+            </blockquote>
+            <p>Change the address range to <code>10.8.2.0/24</code>:</p>
+            <blockquote>
+                <code>server 10.8.2.0 255.255.255.0</code>
+            </blockquote>
+            <p>Save the file. Also edit the iptables rules created when the server comes up:</p>
+            <blockquote>
+                <code>vi /etc/iptables/add-openvpn-rules.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -t nat -I POSTROUTING 1 -s 10.8.2.0/24 -o eth0 -j MASQUERADE</code>
+            </blockquote>
+            <p>Save the file. Do the same thing when the iptables rules are deleted:</p>
+            <blockquote>
+                <code>vi /etc/iptables/rm-openvpn-rules.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -t nat -D POSTROUTING -s 10.8.2.0/24 -o eth0 -j MASQUERADE</code>
+            </blockquote>
+            <p>Save the file, and reboot:</p>
+            <blockquote>
+                <code>reboot</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Set Up Client</h2>
+            <h3><a id="2-1"></a>2.1. Install Packages</h3>
+            <p>Now go to work on your client PC. Install all the packages we’ll need for this demonstration:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install openvpn resolvconf curl tcpdump wireshark -y</code>
+            </blockquote>
+            <h3><a id="2-2"></a>2.2. Get OVPN Files</h3>
+            <p>Retrieve the client configuration files from their respective servers:</p>
+            <blockquote>
+                <code>scp root@11.11.11.11:vpn1.ovpn ~/Downloads/</code>
+            </blockquote>
+            <blockquote>
+                <code>scp root@22.22.22.22:vpn2.ovpn ~/Downloads/</code>
+            </blockquote>
+            <h3><a id="2-3"></a>2.3. Set Up Client for VPN1</h3>
+            <p>Determine the IP address of your PC’s default gateway:</p>
+            <blockquote>
+                <code>ip r | grep default</code>
+            </blockquote>
+            <p>We will use as our example the IP address <code>10.0.2.2</code>.</p>
+            <p>Edit the downloaded configuration file for VPN1:</p>
+            <blockquote>
+                <code>vi ~/Downloads/vpn1.ovpn</code>
+            </blockquote>
+            <p>Insert a couple of lines that prevent the OpenVPN client from accepting routes pushed by the server, and instead manually add a route to the VPN1 server via your
+            default gateway:</p>
+            <blockquote>
+                <code>route-nopull<br>
+                route 11.11.11.11 255.255.255.255 10.0.2.2</code>
+            </blockquote>
+            <p>Save the file. Copy the amended configuration file into the OpenVPN directory:</p>
+            <blockquote>
+                <code>sudo cp ~/Downloads/vpn1.ovpn /etc/openvpn/vpn1.conf</code>
+            </blockquote>
+            <p>Connect your PC to the VPN1 server:</p>
+            <blockquote>
+                <code>sudo systemctl start openvpn@vpn1</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4. Test Connection to VPN1</h3>
+            <p>Check the connection to the VPN1 server:</p>
+            <blockquote>
+                <code>sudo systemctl status openvpn@vpn1</code>
+            </blockquote>
+            <p>You should see a message <code>Initialization Sequence Completed</code>.</p>
+            <p>Now, just for testing purposes, manually add routes that will send the client’s entire traffic through the tunnel:</p>
+            <blockquote>
+                <code>sudo ip r add 0.0.0.0/1 via 10.8.1.1 dev tun0</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ip r add 128.0.0.0/1 via 10.8.1.1 dev tun0</code>
+            </blockquote>
+            <p>Check that you have outbound connectivity:</p>
+            <blockquote>
+                <code>ping 8.8.8.8</code>
+            </blockquote>
+            <p>Do <strong>Ctrl</strong>+<strong>c</strong> to stop ping. Check that DNS resolution works:</p>
+            <blockquote>
+                <code>ping www.yahoo.com</code>
+            </blockquote>
+            <p>Do <strong>Ctrl</strong>+<strong>c</strong> to stop ping. Confirm the address at which your packets emerge from the tunnel:</p>
+            <blockquote>
+                <code>curl ifconfig.me &amp;& echo ''</code>
+            </blockquote>
+            <p>You should see the IP address of VPN1. Assuming all is well, manually delete your added routes:</p>
+            <blockquote>
+                <code>sudo ip r del 0.0.0.0/1</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ip r del 128.0.0.0/1</code>
+            </blockquote>
+            <h3><a id="2-5"></a>2.5. Set Up Client for VPN2</h3>
+            <p>Get the IP address of your gateway on the first tunnel interface, which is usually named <code>tun0</code>. In our example, the gateway will be
+            <code>10.8.1.1</code>.</p>
+            <p>Edit your client configuration file for VPN2:</p>
+            <blockquote>
+                <code>vi ~/Downloads/vpn2.ovpn</code>
+            </blockquote>
+            <p>Insert a couple of lines that prevent the OpenVPN client from accepting routes pushed by the server, and instead manually add a route to the VPN2 server via your
+            first tunnel:</p>
+            <blockquote>
+                <code>route-nopull<br>
+                route 22.22.22.22 255.255.255.255 10.8.1.1</code>
+            </blockquote>
+            <p>Save the file. Copy the client configuration file for VPN2 into the OpenVPN directory:</p>
+            <blockquote>
+                <code>sudo cp ~/Downloads/vpn2.ovpn /etc/openvpn/vpn2.conf</code>
+            </blockquote>
+            <p>Start the OpenVPN client for VPN2:</p>
+            <blockquote>
+                <code>sudo systemctl start openvpn@vpn2</code>
+            </blockquote>
+            <p>Check the connection to the server:</p>
+            <blockquote>
+                <code>sudo systemctl status openvpn@vpn2</code>
+            </blockquote>
+            <p>You should see a message <code>Initialization Sequence Completed</code>.</p>
+            <p>Manually add routes that will send your PC’s entire traffic through the second tunnel:</p>
+            <blockquote>
+                <code>sudo ip r add 0.0.0.0/1 via 10.8.2.1 dev tun1</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ip r add 128.0.0.0/1 via 10.8.2.1 dev tun1</code>
+            </blockquote>
+            <h2><a id="3"></a>3. End-to-End Test</h2>
+            <p>Check that you have outbound connectivity:</p>
+            <blockquote>
+                <code>ping 8.8.8.8</code>
+            </blockquote>
+            <p>Do <strong>Ctrl</strong>+<strong>c</strong> to stop ping. Check that DNS resolution works:</p>
+            <blockquote>
+                <code>ping www.yahoo.com</code>
+            </blockquote>
+            <p>Do <strong>Ctrl</strong>+<strong>c</strong> to stop ping. Confirm the address at which your packets emerge from the tunnels:</p>
+            <blockquote>
+                <code>curl ifconfig.me &amp;& echo ''</code>
+            </blockquote>
+            <p>You should now see the IP address of VPN2.</p>
+            <p>Determine your main interface:</p>
+            <blockquote>
+                <code>ip a</code>
+            </blockquote>
+            <p>Let’s say, for example, that it is <code>enp0s3</code>. Capture the packets that go out from <code>enp0s3</code> to either VPN1 or VPN2:</p>
+            <blockquote>
+                <code>sudo tcpdump -i enp0s3 -w capture.pcap host 11.11.11.11 or host 22.22.22.22</code>
+            </blockquote>
+            <p>Leave tcpdump running in your first terminal window. Open a second terminal window and reissue the command:</p>
+            <blockquote>
+                <code>curl ifconfig.me &amp;& echo ''</code>
+            </blockquote>
+            <p>Of course, you should still see the VPN2 server address, but we did this mainly to capture the packets going out.</p>
+            <p>Close the second terminal window. In the first terminal window, do <strong>Ctrl</strong>+<strong>c</strong> to stop tcpdump.</p>
+            <p>Launch the Wireshark application. In Wireshark, open your file <code>capture.pcap</code>.</p>
+            <p>You should see all your packets go out to VPN1, and none to VPN2.</p>
+            <p>Finally, open Firefox and visit <a href="https://ipchicken.com/" target="_blank">IPchicken.com</a> to make sure HTTPS traffic emerges from the tunnels at the VPN2
+            IP address.</p>
+            <h2><a id="4"></a>4. Finish Up</h2>
+            <p>When you are done, delete the manually added rules:</p>
+            <blockquote>
+                <code>sudo ip r del 0.0.0.0/1</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ip r del 128.0.0.0/1</code>
+            </blockquote>
+            <p>Stop the two OpenVPN clients:</p>
+            <blockquote>
+                <code>sudo systemctl stop openvpn@vpn1</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl stop openvpn@vpn2</code>
+            </blockquote>
+            <p>Check that everything is back to normal and that traffic is now emerging directly from your ISP:</p>
+            <blockquote>
+                <code>curl ifconfig.me &amp;& echo ''</code>
+            </blockquote>
+            <h2><a id="5"></a>5. Get Help and Report Issues</h2>
+            <p>This is a niche area, and there are no official support arrangements.</p>
+            <p>If you run into problems, a couple of suggestions made by people who’ve previously tested VPN chains are to <a href="https://github.com/TensorTom/VPN-Chain/issues/7" target="_blank">change the MTU size to 1400</a> or to <a href="https://superuser.com/questions/1521812/use-a-proxy-or-another-vpn-before-connecting-to-a-vpn" target="_blank">use TCP instead of UDP for one of the connections</a>.</p>
+            <p>For the OpenVPN manual, do <code>man openvpn</code> on Linux, or consult the online <a href="https://openvpn.net/community-resources/reference-manual-for-openvpn-2-4" target="_blank">Reference Manual for OpenVPN 2.4</a>. If you need further support, you can
+            ask on the <a href="https://forums.openvpn.net/" target="_blank">OpenVPN forums</a>.</p>
+            <p><em>Updated 2020-10</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

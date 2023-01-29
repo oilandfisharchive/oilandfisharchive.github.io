@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shadowsocks with kcptun Acceleration</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Shadowsocks with kcptun Acceleration</h1>
+            <p>kcptun can accelerate your TCP connection between a client and a server in situations of congestion on the line. This remote port forwarding tool converts a TCP
+            stream into a UDP stream in KCP protocol in order to achieve higher throughput and lower latency. It includes rich options for performance tuning.</p>
+            <p>We give instructions for the example of a Windows client, although clients for other platforms are also available. We use Debian 11 for server. The server in our
+            examples has IP address <code>12.34.56.78</code>.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Generate Port Number and Password</h3>
+            <p>Since Shadowsocks will be tunneled through kcptun, we will just use the default port <code>8388</code> for Shadowsocks itself. However, you will need a port number
+            for kcptun and also a strong password for Shadowsocks.</p>
+            <p>First generate a random port number from the command line of a Linux computer like this:</p>
+            <blockquote>
+                <code>echo $((1024 + $RANDOM))</code>
+            </blockquote>
+            <p>The shell function RANDOM gives you a pseudo-random integer between 0 and 32767, so after evaluating the arithmetical expression, you will end up with a port number
+            between 1024 and 33791. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>2977</code>
+            </blockquote>
+            <p>Also generate a random password from the command line of a Linux computer:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>The <code>openssl rand -base64</code> function gives you a random number, expressed in base-64 notation. Because of the argument <code>24</code>, it will be based
+            on 24 bytes or 192 bits. The result will have 32 base-64 characters. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>chVMBNntf0Bvsu2927k486bB546yGJ7B</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Open Firewall</h3>
+            <p>A server firewall is recommended but optional. There are multiple ways to implement a firewall on a Debian/Ubuntu server: nftables, iptables, ufw, and firewalld. We
+            will use nftables in our examples, but you can use another method if you prefer.</p>
+            <p>SSH into your server as <code>root</code>.</p>
+            <p>Issue each of the following commands in turn to install and start nftables:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <p>Configure the firewall to accept related traffic and internal traffic on the loopback interface:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <p>Configure the firewall to accept <code>ping</code> requests so that you can test latency:</p>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol icmp icmp type echo-request counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip6 nexthdr icmpv6 icmpv6 type echo-request counter accept</code>
+            </blockquote>
+            <p>Open port <code>22</code> for SSH. If you can restrict the port <code>22</code> rule so that only certain source IP addresses are whitelisted for SSH access, then
+            so much the better. For example, if you always connect to your server from source IP address <code>XX.XX.XX.XX</code>:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 ip saddr XX.XX.XX.XX/32 counter accept</code>
+            </blockquote>
+            <p>If you cannot restrict the port <code>22</code> rule, then you will have to open the port to the whole world instead:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 22 counter accept</code>
+            </blockquote>
+            <p>Open the server for KCPTUN UDP input on your chosen port:</p>
+            <blockquote>
+                <code>nft add rule inet filter input udp dport 2977 counter accept</code>
+            </blockquote>
+            <p>Drop all unexpected input:</p>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Save the rules:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Tune Kernel Parameters</h3>
+            <p>Increase the number of open files on your server:</p>
+            <blockquote>
+                <code>ulimit -n 65535</code>
+            </blockquote>
+            <p>Also edit the file <code>~/.bashrc</code> and insert a line <code>ulimit -n 65535</code> so that it applies to all future sessions.</p>
+            <p>Edit the system control configuration file:</p>
+            <blockquote>
+                <code>vi /etc/sysctl.conf</code>
+            </blockquote>
+            <p>Insert lines for these parameters for better handling of UDP packets:</p>
+            <blockquote>
+                <code>net.core.rmem_max=26214400<br>
+                net.core.rmem_default=26214400<br>
+                net.core.wmem_max=26214400<br>
+                net.core.wmem_default=26214400<br>
+                net.core.netdev_max_backlog=2048</code>
+            </blockquote>
+            <p>Write the file to disk and quit the editor. Activate:</p>
+            <blockquote>
+                <code>sysctl -p</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Install Shadowsocks on Server</h3>
+            <p>Use the snap method to install Shadowsocks:</p>
+            <blockquote>
+                <code>apt install snapd -y</code>
+            </blockquote>
+            <p>Restart your SSH session to get <code>/snap/bin</code> in path:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <blockquote>
+                <code>ssh root@12.34.56.78</code>
+            </blockquote>
+            <p>Then carry on with the snap install:</p>
+            <blockquote>
+                <code>snap install core; snap refresh core</code>
+            </blockquote>
+            <blockquote>
+                <code>snap install shadowsocks-rust</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Run Shadowsocks Server</h3>
+            <p>Start Shadowsocks running in its own <code>screen</code> session. Notice that it only needs to listen on localhost port <code>8388</code>, because that is where
+            kcptun will sends its traffic.</p>
+            <blockquote>
+                <code>screen -S ssserver</code>
+            </blockquote>
+            <blockquote>
+                <code>shadowsocks-rust.ssserver -k chVMBNntf0Bvsu2927k486bB546yGJ7B -m chacha20-ietf-poly1305 -s 127.0.0.1:8388 --timeout 300</code>
+            </blockquote>
+            <p>You can alternatively create a configuration file for Shadowsocks. Use <code>shadowsocks-rust.ssserver --help</code> for a full list of options.</p>
+            <p>Do <strong>Ctrl</strong>+<strong>a</strong> then <strong>d</strong> to detach from the Shadowsocks server screen session.</p>
+            <h3><a id="1-6"></a>1.6. Install kcptun on Server</h3>
+            <p>In a browser on your workstation, visit <a href="https://github.com/xtaci/kcptun/releases" target="_blank">https://github.com/xtaci/kcptun/releases</a> to determine
+            the latest release. Then, in your SSH session with the server, download the binary for that release. For example:</p>
+            <blockquote>
+                <code>wget https://github.com/xtaci/kcptun/releases/download/v20220628/kcptun-linux-amd64-20220628.tar.gz</code>
+            </blockquote>
+            <p>Extract the compressed archive:</p>
+            <blockquote>
+                <code>tar -xf kcptun-linux-amd64-20220628.tar.gz</code>
+            </blockquote>
+            <p>Copy the binary into your path:</p>
+            <blockquote>
+                <code>cp server_linux_amd64 /usr/local/bin</code>
+            </blockquote>
+            <h3><a id="1-7"></a>1.7. Start kcptun Server</h3>
+            <p>Start kcptun running in its own <code>screen</code> session. It listens for UDP traffic on port <code>2977</code> in our example, and sends the traffic to
+            Shadowsocks on port <code>8388</code>.</p>
+            <blockquote>
+                <code>screen -S kcptun</code>
+            </blockquote>
+            <blockquote>
+                <code>server_linux_amd64 -t "127.0.0.1:8388" -l ":2977" -mode fast3 -nocomp -sockbuf 16777217 -dscp 46</code>
+            </blockquote>
+            <p>The meanings of the parameters are:</p>
+            <ul>
+                <li><code>-t</code> target server address</li>
+                <li><code>-l</code> local listen address</li>
+                <li><code>-mode</code> profile</li>
+                <li><code>-nocomp</code> disable compression</li>
+                <li><code>-sockbuf</code> per-socket buffer in bytes</li>
+                <li><code>-dscp</code> Differentiated Services Code Point <code>46</code>=telephony</li>
+            </ul>Do <strong>Ctrl</strong>+<strong>a</strong> then <strong>d</strong> to detach from the kcptun server screen session.
+            <p></p>
+            <h3><a id="1-8"></a>1.8. Exit SSH on Server</h3>
+            <p>Your work on the server is done, so you can exit your SSH session now:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Client</h2>
+            <p>We are going to use the example of a Windows client. Clients for other platforms are also available.</p>
+            <h3><a id="2-1"></a>2.1. Download kcptun client</h3>
+            <p>You will need to install <a href="https://www.7-zip.org/" target="_blank">7-zip</a> to extract the archive.</p>
+            <p>In a browser on your workstation, visit <a href="https://github.com/xtaci/kcptun/releases" target="_blank">https://github.com/xtaci/kcptun/releases</a> to determine
+            the latest release. Then download the binary for that release. In our example, it is <code>kcptun-windows-amd64-20220628.tar.gz</code>.</p>
+            <p>Extract the <code>tar.gz</code> file.</p>
+            <p>Extract the inner <code>tar</code> file. It contains a binary named <code>client_windows_amd64.exe</code>.</p>
+            <h3><a id="2-2"></a>2.2. Run kcptun client</h3>
+            <p>Open a Windows Command Prompt window. Run the client:</p>
+            <blockquote>
+                <code>cd Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>client_windows_amd64.exe -r "12.34.56.78:2977" -l ":8388" -mode fast3 -nocomp -autoexpire 900 -sockbuf 16777217 -dscp 46</code>
+            </blockquote>
+            <p>In the above command, replace the server IP address and port with the correct values for your server IP address and your chosen port number for kcptun. In our
+            example, the kcptun client is communicating with the kcptun server using UDP on port <code>2977</code>.</p>
+            <p>If Windows Defender Firewall pops up, click <strong>Allow access</strong>.</p>
+            <p>Leave the Command Prompt window open with the client running in it.</p>
+            <h3><a id="2-3"></a>2.3. Download Shadowsocks Client</h3>
+            <p>Download the Shadowsocks for Windows client from <a href="https://github.com/shadowsocks/shadowsocks-windows/releases" target="_blank">GitHub</a>, e.g.
+            <code>Shadowsocks-4.4.1.0.zip</code>.</p>
+            <p>Unzip the zip file.</p>
+            <h3><a id="2-4"></a>2.4. Run Shadowsocks Client</h3>
+            <p>Run the program <code>Shadowsocks.exe</code>.</p>
+            <p>If necessary, click <strong>More info</strong> and <strong>Run anyway</strong>.</p>
+            <p>Enter values that will send Shadowsocks traffic to kcptun, which is listening on localhost port <code>8388</code>:</p>
+            <ul>
+                <li>Server IP <code>127.0.0.1</code></li>
+                <li>Server port <code>8388</code></li>
+                <li>Password <code>chVMBNntf0Bvsu2927k486bB546yGJ7B</code></li>
+                <li>Encryption <code>chacha20-ietf-poly1305</code></li>
+                <li>Proxy port <code>1080</code></li>
+            </ul>
+            <p>Click <strong>Apply</strong>.</p>
+            <p>Click <strong>OK</strong>.</p>
+            <h3><a id="2-5"></a>2.5. Set System Proxy</h3>
+            <p>Find the Shadowsocks icon in the system tray at the bottom right of your desktop.</p>
+            <p>Right-click to bring up the context menu.</p>
+            <p>Click <strong>System Proxy</strong>.</p>
+            <p>Select <strong>Global</strong>.</p>
+            <h3><a id="2-6"></a>2.6. Test Browser</h3>
+            <p>Open a browser and try to visit <a href="https://ipchicken.com/" target="_blank">https://ipchicken.com</a>.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>For documentation on kcptun, consult the <a href="https://github.com/xtaci/kcptun" target="_blank">GitHub</a> page.</p>
+            <p>Report kcptun issues on the <a href="https://github.com/xtaci/kcptun/issues" target="_blank">GitHub issues page</a>.</p>
+            <p><em>Updated 2022-07-06</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

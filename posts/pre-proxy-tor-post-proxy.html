@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pre-Proxy + Tor + Post-Proxy</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Pre-Proxy + Tor + Post-Proxy</h1>
+            <p>Using a pre-proxy before with Tor provides you with censorship circumvention and improved privacy. However, more and more sites are suspicious of traffic that comes
+            from a Tor exit node. They will force you to complete multiple rounds of “Captchas” (completely automated public Turing tests to tell computers and humans apart), or
+            even impose an outright block. By adding a post-proxy, you can visit these sites from a node that does not appear to be a Tor exit node. The final arrangement of
+            software chains three components:</p>
+            <ul>
+                <li>a pre-proxy for anticensorship</li>
+                <li>Tor for anonymity</li>
+                <li>a post-proxy to avoid having a Tor exit node as your final IP address</li>
+            </ul>
+            <p>This article gives some practical details to construct this arrangement.</p>
+            <p>We assume that your PC runs a recent version of Debian or Ubuntu. We tested this procedure with Debian 11 Buster Release Candidate 2. If your PC runs Windows or
+            macOS, you will have to experiment on your own.</p>
+            <h2><a id="1"></a>1. Install and Configure Pre-Proxy</h2>
+            <h3><a id="1-1"></a>1.1. Make Decisions</h3>
+            <p>You will need to make some decisions as to which pre-proxy will work best. Examples of pre-proxies would be Shadowsocks, V2Ray, or Trojan-GFW. We have tested this
+            procedure with Shadowsocks. We have not tested V2Ray or Trojan-GFW.</p>
+            <p>Having decided that, you will need to decide between using a public-interest server or a private server. Which is best for you depends on your threat model. You do
+            not know who is running the public-interest server, and you do not know if they keep logs. However, your traffic will pass through the first server completely
+            encrypted, so the proxy operator does not know your final destination or the contents of your traffic. A private server is more secure but leaves a money trail.</p>
+            <h3><a id="1-2"></a>1.2. Obtain Pre-Proxy Server Details</h3>
+            <p>Having made your decisions, you must obtain the pre-proxy server details such as IP address, port, and password.</p>
+            <ul>
+                <li>If you decide that a public-interest server will work best for you, you can find servers from lists on the Internet.</li>
+                <li>If you decide that a private server will work best for you, you can set one up as described in the articles on <a href="shadowsocks-libev.html">Shadowsocks-Libev</a>, <a href="v2ray.html">V2Ray</a>, and <a href="trojan-gfw.html">Trojan-GFW</a>.
+                </li>
+            </ul>
+            <p>We give the example of setting up a private Shadowsocks-Libev server at IP address <code>YY.YY.YY.YY</code>:</p>
+            <blockquote>
+                <code>ssh root@YY.YY.YY.YY</code>
+            </blockquote>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install shadowsocks-libev -y</code>
+            </blockquote>
+            <blockquote>
+                <code>vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Enter your choice of configuration details. For example:</p>
+            <blockquote>
+                <code>{<br>
+                "server":["::1", "0.0.0.0"],<br>
+                "server_port":29974,<br>
+                "local_port":1080,<br>
+                "method":"chacha20-ietf-poly1305",<br>
+                "password":"Br8FwfLbjRaeqj55",<br>
+                "timeout":300,<br>
+                "fast_open": false,<br>
+                "mode":"tcp_only"<br>
+                }</code>
+            </blockquote>
+            <p>Save the file, restart Shadowsocks-Libev, and exit your session with the server:</p>
+            <blockquote>
+                <code>systemctl restart shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install and Configure Pre-Proxy Client</h3>
+            <p>Whether you are using a public-interest server or a private server, at this stage you must have the details of your server so that you can configure your
+            client.</p>
+            <p>This article uses the example of a Shadowsocks server as the pre-proxy. You would install the client on Debian or Ubuntu like this:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo apt install shadowsocks-libev -y</code>
+            </blockquote>
+            <p>Since this will be a Shadowsocks local client, stop the Shadowsocks server:</p>
+            <blockquote>
+                <code>sudo systemctl stop shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl disable shadowsocks-libev</code>
+            </blockquote>
+            <p>Edit a configuration file for the client:</p>
+            <blockquote>
+                <code>sudo vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Enter your server details, replacing <code>YY.YY.YY.YY</code> by your server’s public IP address:</p>
+            <blockquote>
+                <code>{<br>
+                "server": "YY.YY.YY.YY",<br>
+                "server_port": 29974,<br>
+                "local_address": "127.0.0.1",<br>
+                "local_port":1080,<br>
+                "method": "chacha20-ietf-poly1305",<br>
+                "password": "Br8FwfLbjRaeqj55",<br>
+                "timeout": 300,<br>
+                "fast_open": false,<br>
+                "mode": "tcp_only"<br>
+                }</code>
+            </blockquote><img src="../images/ptp-ss-config.png" alt="Shadowsocks configuration on the client">
+            <p>Save the file.</p>
+            <p>Start the local client listening on port <code>1080</code>:</p>
+            <blockquote>
+                <code>sudo systemctl enable shadowsocks-libev-local@config</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl start shadowsocks-libev-local@config</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Install and Configure Tor Browser</h2>
+            <h3><a id="2-1"></a>2.1. Download and Extract Tor Browser</h3>
+            <p>Open Firefox. Download the Tor Browser for 64-bit Linux in your language from the <a href="https://www.torproject.org/download/languages" target="_blank">Tor Project website</a>.</p>
+            <p>If the Tor Project website is blocked in your country, the pre-proxy should allow you to reach it if you configure Firefox to use the <strong>SOCKS5</strong> proxy
+            on <code>127.0.0.1</code> port <code>1080</code>. If you still have problems, send an email to <a href="mailto:gettor@torproject.org">gettor@torproject.org</a>. The
+            email responder will automatically send you alternative download links for Tor Browser.</p>
+            <p>The download will have a name such as <code>tor-browser-linux64-10.0.17_en-US.tar.xz</code>. Decompress the archive by opening a terminal and issuing the
+            commands:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>tar -xf tor-browser-linux64-10.0.17_en-US.tar.xz</code>
+            </blockquote>
+            <p>Install the app like this:</p>
+            <blockquote>
+                <code>cd tor-browser_en-US</code>
+            </blockquote>
+            <blockquote>
+                <code>./start-tor-browser.desktop --register-app</code>
+            </blockquote><img src="../images/ptp-register-app.png" alt="Registering Tor Browser as an app on Linux">
+            <h3><a id="2-2"></a>2.2. Configure Tor to Use Pre-Proxy</h3>
+            <p>The Tor configuration file is stored in <code>~/Downloads/tor-browser_en-US/Browser/TorBrowser/Data/Tor/torrc</code>. However, you should configure Tor within the
+            Tor Browser graphical user interface.</p>
+            <p>Assuming you are using GNOME desktop, click <strong>Activities</strong>. Search for and start <strong>Tor Browser</strong>. (At this point, you can right-click on
+            the Tor Browser icon in the <strong>Activities</strong> menu and add it to your favorites, if you wish.)</p>
+            <p>The first time Tor Browser launches:</p>
+            <ol>
+                <li>Click <strong>Configure</strong>.</li>
+                <li>Check <strong>I use a proxy to connect to the Internet</strong>.</li>
+                <li>Enter the details of your pre-proxy client, which will usually be proxy type <strong>SOCKS5</strong>, IP address <code>127.0.0.1</code>, and port
+                <code>1080</code>.</li>
+                <li>Click <strong>Connect</strong> to make sure you can connect through your pre-proxy + Tor.</li>
+            </ol><img src="../images/ptp-tor-config.png" alt="Configuring Tor Browser to use a SOCKS proxy on localhost port 1080">
+            <p>As soon as you are connected through your pre-proxy to Tor, close the Tor Browser for now. If you want to see the configuration created by the graphical user
+            interface in Tor Browser, issue the command:</p>
+            <blockquote>
+                <code>cat ~/Downloads/tor-browser_en-US/Browser/TorBrowser/Data/Tor/torrc</code>
+            </blockquote>
+            <p>You will see that Tor Browser has added a line to your <code>torrc</code> configuration file:</p>
+            <blockquote>
+                <code>Socks5Proxy 127.0.0.1:1080</code>
+            </blockquote><img src="../images/ptp-torrc.png" alt="Torrc file generated by Tor Browser">
+            <h2><a id="3"></a>3. Download and Configure Psiphon 3</h2>
+            <h3><a id="3-1"></a>3.1. Download Psiphon Binary for Linux</h3>
+            <p>Get the Psiphon binary from GitHub:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core-binaries/master/linux/psiphon-tunnel-core-x86_64</code>
+            </blockquote>
+            <p>Make it executable:</p>
+            <blockquote>
+                <code>chmod +x psiphon-tunnel-core-x86_64</code>
+            </blockquote>
+            <h3><a id="3-2"></a>3.2. Create Configuration File</h3>
+            <p>Create a configuration file for Psiphon 3:</p>
+            <blockquote>
+                <code>vi config.json</code>
+            </blockquote>
+            <p>Insert lines like this. Psiphon will listen on port <code>1081</code> and expect an upstream proxy (Tor) on port <code>9150</code>. We previously configured Tor to
+            expect its own proxy on port <code>1080</code>.</p>
+            <blockquote>
+                <code>{<br>
+                "LocalHttpProxyPort":8081,<br>
+                "LocalSocksProxyPort":1081,<br>
+                "UpstreamProxyURL":"socks5://127.0.0.1:9150",<br>
+                "PropagationChannelId":"FFFFFFFFFFFFFFFF",<br>
+                "RemoteServerListDownloadFilename":"remote_server_list",<br>
+                "RemoteServerListSignaturePublicKey":"MIICIDANBgkqhkiG9w0BAQEFAAOCAg0AMIICCAKCAgEAt7Ls+/39r+T6zNW7GiVpJfzq/xvL9SBH5rIFnk0RXYEYavax3WS6HOD35eTAqn8AniOwiH+DOkvgSKF2caqk/y1dfq47Pdymtwzp9ikpB1C5OfAysXzBiwVJlCdajBKvBZDerV1cMvRzCKvKwRmvDmHgphQQ7WfXIGbRbmmk6opMBh3roE42KcotLFtqp0RRwLtcBRNtCdsrVsjiI1Lqz/lH+T61sGjSjQ3CHMuZYSQJZo/KrvzgQXpkaCTdbObxHqb6/+i1qaVOfEsvjoiyzTxJADvSytVtcTjijhPEV6XskJVHE1Zgl+7rATr/pDQkw6DPCNBS1+Y6fy7GstZALQXwEDN/qhQI9kWkHijT8ns+i1vGg00Mk/6J75arLhqcodWsdeG/M/moWgqQAnlZAGVtJI1OgeF5fsPpXu4kctOfuZlGjVZXQNW34aOzm8r8S0eVZitPlbhcPiR4gT/aSMz/wd8lZlzZYsje/Jr8u/YtlwjjreZrGRmG8KMOzukV3lLmMppXFMvl4bxv6YFEmIuTsOhbLTwFgh7KYNjodLj/LsqRVfwz31PgWQFTEPICV7GCvgVlPRxnofqKSjgTWI4mxDhBpVcATvaoBl1L/6WLbFvBsoAUBItWwctO2xalKxF5szhGm8lccoc5MZr8kfE0uxMgsxz4er68iCID+rsCAQM=",<br>
+
+                "RemoteServerListUrl":"https://s3.amazonaws.com/psiphon/web/mjr4-p23r-puwl/server_list_compressed",<br>
+                "SponsorId":"FFFFFFFFFFFFFFFF",<br>
+                "UseIndistinguishableTLS":true<br>
+                }</code>
+            </blockquote>
+            <h2><a id="4"></a>4. Start Session</h2>
+            <h3><a id="4-1"></a>4.1. Check Pre-Proxy Is Running</h3>
+            <p>We just need to check the pre-proxy is still running:</p>
+            <blockquote>
+                <code>sudo systemctl status shadowsocks-libev-local@config</code>
+            </blockquote>
+            <p>If necessary, type <code>q</code> to quit the status display.</p>
+            <h3><a id="4-2"></a>4.2. Start Tor</h3>
+            <p>Start Tor Browser. We won’t actually use Tor Browser as the browser, so hide it (“Super” key + <strong>h</strong> in GNOME desktop). We just want the Tor client
+            itself to stay running. It listens on <code>localhost</code> port <code>9050</code>.</p>
+            <h3><a id="4-3"></a>4.3. Start Post-Proxy</h3>
+            <p>Start Psiphon running:</p>
+            <blockquote>
+                <code>./psiphon-tunnel-core-x86_64 -config config.json</code>
+            </blockquote>
+            <p>It takes a few minutes to initialize when it has to run through a pre-proxy plus Tor. Leave the terminal window open, with Psiphon running in it.</p><img src=
+            "../images/ptp-psiphon.png" alt="Psiphon running in a Linux terminal">
+            <h3><a id="4-4"></a>4.4. Configure Firefox</h3>
+            <p>Open Firefox. From the hamburger menu, select <strong>Preferences</strong>. In the <strong>Network Settings</strong> section, click <strong>Settings</strong>. Set
+            the network settings as follows:</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration</strong></li>
+                <li>Fill in <code>127.0.0.1</code> in SOCKS Host</li>
+                <li>Fill in <code>1081</code> in the Port (this is the port that Psiphon is listening on)</li>
+                <li>Select <strong>SOCKS v5</strong></li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5</strong></li>
+                <li>Click <strong>OK</strong> when you’ve set everything up</li>
+            </ul><img src="../images/ptp-firefox.png" alt="Firefox configured to use proxy on port 1081">
+            <p>Firefox now sends requests to Psiphon on port <code>1081</code>, which expects an upstream proxy on port <code>9150</code> (Tor), which in turn uses a proxy on port
+            <code>1080</code> (Shadowsocks).</p>
+            <h3><a id="4-5"></a>4.5. End-to-End Test</h3>
+            <p>In Firefox, visit <a href="https://check.torproject.org/" target="_blank">https://check.torproject.org</a>. You should see that you do <em>not</em> appear to be
+            using Tor. You see the IP address of the Psiphon server, not the IP address of a Tor exit node.</p>
+            <p><em>Updated 2021-06-19</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pingtunnel ICMP Tunnel</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Pingtunnel ICMP Tunnel</h1>
+            <p>Pingtunnel is a last-resort tool you can try when almost all TCP/UDP traffic is blocked. It transmit packets to a proxy server using ICMP (the ping protocol). The
+            proxy server then reconstitutes the TCP/UDP traffic and forwards it to the intended destination. This would normally be slow, but under some circumstances it can
+            actually speed up network transmission. The server in the sample commands runs Debian 10. The client is a Windows 10 PC.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Install and Configure Firewall</h3>
+            <p>We begin by installing a firewall and configuring it to accept SSH input. Obviously we must also accept ICMP input. Issue the commands that follow:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nftables -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nftables</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ct state related,established counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input iif lo counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input ip protocol icmp counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport ssh counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft add rule inet filter input counter drop</code>
+            </blockquote>
+            <p>Save these firewall rules:</p>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <p>For better security, restrict port 22 access to trusted IP addresses only. For example, if you always log in from IP address <code>xx.xx.xx.xx</code>:</p>
+            <blockquote>
+                <code>vi /etc/nftables.conf</code>
+            </blockquote>
+            <p>Edit the line for the SSH port, and restrict it to accept only your personal source IP address:</p>
+            <blockquote>
+                <code>tcp dport ssh ip saddr xx.xx.xx.xx/32 counter accept</code>
+            </blockquote>
+            <p>Save the file. Restart the firewall:</p>
+            <blockquote>
+                <code>systemctl restart nftables</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Disable System Ping Response</h3>
+            <p>Normally a server would automatically respond to a ping echo request. We want to inhibit this response. Edit the system control configuration file:</p>
+            <blockquote>
+                <code>vi /etc/sysctl.d/10-noecho.conf</code>
+            </blockquote>
+            <p>Add the following line:</p>
+            <blockquote>
+                <code>net.ipv4.icmp_echo_ignore_all = 1</code>
+            </blockquote>
+            <p>Save the file. Enforce this setting immediately:</p>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/10-noecho.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Download Pingtunnel for Linux</h3>
+            <p>In a browser on your PC, visit the <a href="https://github.com/esrrhs/pingtunnel/releases" target="_blank">GitHub releases page</a>, and determine the latest
+            release of Pingtunnel. Download <code>pingtunnel_linux64.zip</code> for that release. For example, if the release number is 2.4, then issue the command:</p>
+            <blockquote>
+                <code>wget https://github.com/esrrhs/pingtunnel/releases/download/2.4/pingtunnel_linux64.zip</code>
+            </blockquote>
+            <p>Extract the binary from the zip file:</p>
+            <blockquote>
+                <code>apt install unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip pingtunnel_linux64.zip</code>
+            </blockquote>
+            <p>Copy the binary into the correct directory:</p>
+            <blockquote>
+                <code>cp pingtunnel /usr/local/bin</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Create Systemd Service File</h3>
+            <p>Create a systemd service file for Pingtunnel:</p>
+            <blockquote>
+                <code>vi /usr/lib/systemd/system/pingtunnel.service</code>
+            </blockquote>
+            <p>Insert contents as shown below:</p>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=Pingtunnel Server<br>
+                After=network.target<br>
+                <br>
+                [Service]<br>
+                ExecStart=/usr/local/bin/pingtunnel -type server<br>
+                Restart=always<br>
+                RestartSec=5<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="1-5"></a>1.5. Run Pingtunnel</h3>
+            <p>Start Pingtunnel after every reboot, and also start it right now:</p>
+            <blockquote>
+                <code>systemctl enable pingtunnel</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start pingtunnel</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Check Pingtunnel</h3>
+            <p>Check that Pingtunnel is active (running) and that there are no error messages:</p>
+            <blockquote>
+                <code>systemctl status pingtunnel</code>
+            </blockquote>
+            <blockquote>
+                <code>journalctl -u pingtunnel</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Client</h2>
+            <h3><a id="2-1"></a>2.1. Download GUI Client</h3>
+            <p>Now go to your PC for the client set up. You can run the Pingtunnel client from the <a href="https://github.com/esrrhs/pingtunnel/releases" target="_blank">command line</a>, but we will use the graphical user interface (GUI). Download the GUI zip file from <a href="https://github.com/esrrhs/pingtunnel-qt/releases" target="_blank">GitHub</a>. Once you have the zip file, unzip it to get the executable.</p>
+            <h3><a id="2-2"></a>2.2. Configure GUI Client</h3>
+            <p>In the folder <code>pingtunnel</code>, double-click on <code>pingtunnel-qt.exe</code> to run the client program. If you get a message from Microsoft Defender
+            SmartScreen to say that Windows protected your PC, then click <strong>More info</strong> followed by <strong>Run anyway</strong>.</p>
+            <p>Modify the server IP address or hostname to point to your server. Make the listening port 1080. Check the box for SOCKS5.</p><img src="../images/pingtunnel-1.png"
+            alt="Pingtunnel ICMP tunnel GUI">
+            <h3><a id="2-3"></a>2.3. Run GUI Client</h3>
+            <p>Click <strong>GO</strong>. If the Windows Defender Firewall box appears, click <strong>Allow access</strong>.</p>
+            <p>You can optionally click the X at the top right of the Pingtunnel window to hide the GUI in the system tray.</p>
+            <h3><a id="2-4"></a>2.4. Configure Browser</h3>
+            <p>You need to configure your browser to send its requests via the SOCKS5 proxy listening on localhost port 1080.</p>
+            <p>If you use Firefox, you can do this from <strong>Options</strong>. Scroll down to <strong>Network Settings</strong>, and click <strong>Settings</strong>.</p>
+            <ul>
+                <li>Choose <strong>Manual proxy configuration</strong>.</li>
+                <li>SOCKS Host <code>127.0.0.1</code>.</li>
+                <li>Port <code>1080</code>.</li>
+                <li>Select version <strong>SOCKS v5</strong>.</li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5</strong>.</li>
+            </ul>
+            <p>If you use Chrome, you can do the same thing with the <a href="https://chrome.google.com/webstore/search/proxy%20switchyomega" target="_blank">Proxy SwitchyOmega</a> extension by FelisCatus.</p>
+            <h3><a id="2-5"></a>2.5. Check</h3>
+            <p>Check that you can visit websites in your browser. If you want to examine the traffic to and from your server, install and run <a href="https://www.wireguard.com/" target="_blank">WireGuard</a>. You should see only ICMP packets.</p>
+            <h3><a id="2-6"></a>2.6. Close</h3>
+            <p>When you are done, find the Pingtunnel icon in the system tray, right-click, and select <strong>Exit</strong>. Set your browser back to system proxy settings (which
+            usually means unproxied).</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>You can report issues on the <a href="https://github.com/esrrhs/pingtunnel/issues" target="_blank">GitHub issues page</a>.</p>
+            <p><em>Updated 2020-10</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

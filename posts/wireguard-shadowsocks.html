@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WireGuard + Shadowsocks</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>WireGuard + Shadowsocks</h1>
+            <p>WireGuard is a popular new VPN protocol. A known limitation of WireGuard is that it is vulnerable to deep packet inspection. Combining WireGuard with Shadowsocks
+            obfuscates the WireGuard protocol.</p>
+            <p>In this tutorial, WireGuard and Shadowsocks are implemented on an Ubuntu Linux server and an Ubuntu Linux client. The client is assumed to be at IP address
+            <code>11.11.11.11</code>, and the server is assumed to be at IP address <code>22.22.22.22</code>. We will use port <code>1433</code> for Shadowsocks and port
+            <code>51820</code> for WireGuard.</p>
+            <p>We assume that you SSH into the server as <code>root</code> but use a non-root username with sudo permissions on the client.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Update Server</h3>
+            <p>Before you do anything else, get your server completely up to date:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Configure Firewall</h3>
+            <p>We are going to use port <code>1433</code> for the Shadowsocks server. Although we use port <code>51820</code> for the WireGuard server, this port can be kept
+            closed to the public, since that will better camouflage your server.</p>
+            <p>Here are some sample iptables rules for IPv4. In this example, SSH is confined to a single IP address, which is <code>11.11.11.11</code> in the example. Replace
+            <code>11.11.11.11</code> by the actual IP address of your workstation.</p>
+            <blockquote>
+                <code>iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p icmp -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 22 -s 11.11.11.11/32 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -A INPUT -p udp --dport 1433 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>iptables -P INPUT DROP</code>
+            </blockquote>
+            <p>Here are some sample rules for IPv6. Note that in our example, we assume you always use IPv4 for SSH, so the firewall is not open for SSH input over IPv6:</p>
+            <blockquote>
+                <code>ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>ip6tables -A INPUT -i lo -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>ip6tables -A INPUT -p icmpv6 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>ip6tables -A INPUT -p udp --dport 1433 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>ip6tables -P INPUT DROP</code>
+            </blockquote>
+            <p>To persist these rules across reboots, install the package iptables-persistent:</p>
+            <blockquote>
+                <code>apt install iptables-persistent -y</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install WireGuard</h3>
+            <p>Install WireGuard using the script and instructions from <a href="https://github.com/angristan/wireguard-install" target="_blank">https://github.com/angristan/wireguard-install</a>:</p>
+            <blockquote>
+                <code>apt install curl -y</code>
+            </blockquote>
+            <blockquote>
+                <code>curl -O https://raw.githubusercontent.com/angristan/wireguard-install/master/wireguard-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x wireguard-install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./wireguard-install.sh</code>
+            </blockquote>
+            <p>You can accept the defaults all the way through the script’s questions, except specify the server’s WireGuard port as <code>51820</code>.</p>
+            <p>When prompted for the name of the first client, call it <code>wgss</code>. This causes the script to create a client configuration file named
+            <code>wg0-client-wgss.conf</code>.</p>
+            <p>The server configuration is placed in <code>/etc/wireguard/wg0.conf</code>. You can check the status of the systemd service with the command:</p>
+            <blockquote>
+                <code>systemctl status wg-quick@wg0</code>
+            </blockquote>
+            <p>It should read <code>active (exited)</code>.</p>
+            <p>Press the <strong>q</strong> key on your computer keyboard to quit the status display.</p>
+            <h3><a id="1-4"></a>1.4. Install Shadowsocks</h3>
+            <p>Install <code>shadowsocks-libev</code> from the repositories:</p>
+            <blockquote>
+                <code>sudo apt install shadowsocks-libev</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Generate Password for Shadowsocks</h3>
+            <p>Generate a 192-bit password, expressed as 32 base-64 characters, with the command:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>We will use the example:</p>
+            <blockquote>
+                <code>C3WOo2qwJCJaiJpe9DY4pGBUC/WGMDxx</code>
+            </blockquote>
+            <p>In what follows, replace the example with your own generated password.</p>
+            <h3><a id="1-6"></a>1.6. Configure Shadowsocks</h3>
+            <p>Edit your Shadowsocks server configuration file:</p>
+            <blockquote>
+                <code>vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Delete the existing contents, and insert contents as follows:</p>
+            <pre>{
+  "server": "0.0.0.0",
+  "server_port": 1433,
+  "password": "C3WOo2qwJCJaiJpe9DY4pGBUC/WGMDxx",
+  "timeout": 300,
+  "method": "chacha20-ietf-poly1305",
+  "mode": "udp_only"
+}
+</pre>
+            <p>Replace <code>C3WOo2qwJCJaiJpe9DY4pGBUC/WGMDxx</code> by your actual password.</p>
+            <p>Write the file to disk. Quit the editor.</p>
+            <h3><a id="1-7"></a>1.7. Run Shadowsocks</h3>
+            <p>The Shadowsocks systemd service is already running. Restart the service with your new configuration file:</p>
+            <blockquote>
+                <code>systemctl restart shadowsocks-libev</code>
+            </blockquote>
+            <p>Exit your SSH session with the server:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Client</h2>
+            <h3><a id="2-1"></a>2.1. Update Client</h3>
+            <p>Before you do anything else, get your client completely up to date:</p>
+            <blockquote>
+                <code>sudo apt update &amp;& sudo apt upgrade -y</code>
+            </blockquote>
+            <h3><a id="2-2"></a>2.2. Install Shadowsocks</h3>
+            <p>Install <code>shadowsocks-libev</code> from the repositories:</p>
+            <blockquote>
+                <code>sudo apt install shadowsocks-libev</code>
+            </blockquote>
+            <h3><a id="2-3"></a>2.3. Configure Shadowsocks</h3>
+            <p>Edit your Shadowsocks client configuration file:</p>
+            <blockquote>
+                <code>sudo vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Delete the contents, and insert new contents as follows:</p>
+            <pre>{
+  "server": "22.22.22.22",
+  "server_port": 1433,
+  "local_address": "127.0.0.1",
+  "local_port": 1080,
+  "password": "C3WOo2qwJCJaiJpe9DY4pGBUC/WGMDxx",
+  "timeout": 300,
+  "method": "chacha20-ietf-poly1305",
+  "mode": "udp_only",
+  "tunnel_address": "127.0.0.1:51820"
+}
+</pre>
+            <p>Replace <code>22.22.22.22</code> by the actual IP address of your server. Replace <code>C3WOo2qwJCJaiJpe9DY4pGBUC/WGMDxx</code> by your actual password.</p>
+            <p>Write the file to disk. Quit the editor.</p>
+            <p>Edit the systemd service file:</p>
+            <blockquote>
+                <code>sudo vi /usr/lib/systemd/system/shadowsocks-libev.service</code>
+            </blockquote>
+            <p>Change the binary from <code>ss-server</code> to <code>ss-tunnel</code>:</p>
+            <blockquote>
+                <code>ExecStart=/usr/bin/ss-tunnel -c $CONFFILE $DAEMON_ARGS</code>
+            </blockquote>
+            <p>Write the file to disk. Quit the editor.</p>
+            <p>Reload systemd:</p>
+            <blockquote>
+                <code>sudo systemctl daemon-reload</code>
+            </blockquote>
+            <h3><a id="2-4"></a>2.4. Run Shadowsocks</h3>
+            <p>Shadowsocks systemd service is already running. Restart it with your new service file and configuration file:</p>
+            <blockquote>
+                <code>sudo systemctl restart shadowsocks-libev</code>
+            </blockquote>
+            <h3><a id="2-5"></a>2.5. Install WireGuard</h3>
+            <p>Install WireGuard on the client:</p>
+            <blockquote>
+                <code>sudo apt install wireguard resolvconf -y</code>
+            </blockquote>
+            <h3><a id="2-6"></a>2.6. Configure WireGuard</h3>
+            <p>Download the WireGuard client configuration file from the server.</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>scp root@22.22.22.22:wg0-client-wgss.conf .</code>
+            </blockquote>
+            <p>Replace <code>22.22.22.22</code> in the above command by your actual server IP address.</p>
+            <p>Copy the configuration file into place:</p>
+            <blockquote>
+                <code>sudo cp wg0-client-wgss.conf /etc/wireguard/wg0.conf</code>
+            </blockquote>
+            <p>Edit the WireGuard client configuration file:</p>
+            <blockquote>
+                <code>sudo vi /etc/wireguard/wg0.conf</code>
+            </blockquote>
+            <p>Shadowsocks will take care of forwarding packets to the real server IP address. Therefore change the endpoint of the peer to be localhost port 1080, which is where
+            Shadowsocks expects its input.</p>
+            <p>Here is a sample client configuration file after changes:</p>
+            <pre>[Interface]
+PrivateKey = kNBDeCk8Nz4ir2qsFd88QthH8CyCPOqS6x1z596MNGA=
+Address = 10.66.66.2/32,fd42:42:42::2/128
+DNS = 94.140.14.14,94.140.15.15
+
+[Peer]
+PublicKey = q+z9MX5ii/YaSivcFim4mXA1zPpopPTSt7YEAyK6s1o=
+PresharedKey = Sj+DR9NR0FbXOFC8ht9sITdnEzSEhrjvts0ljZarEtA=
+Endpoint = 127.0.0.1:1080
+AllowedIPs = 0.0.0.0/0,::/0
+</pre>
+            <p>If your client does not support IPv6, remove the IPv6 addresses (<code>fd42:42:42::2/128</code> and <code>::/0</code>).</p>
+            <p>Write the file to disk. Quit the editor.</p>
+            <h3><a id="2-7"></a>2.7 Add Static Route</h3>
+            <p>Add a static route from the client to the server, so that it does not try to send WireGuard traffic via Shadowsocks, then Shadowsocks via WireGuard, in a continuous
+            and never-ending loop. For example, if your default gateway is <code>192.168.1.1</code> and your interface is <code>wlp3s0</code>:</p>
+            <blockquote>
+                <code>sudo ip route add 22.22.22.22 via 192.168.1.1 dev wlp3s0</code>
+            </blockquote>
+            <p>Replace <code>22.22.22.22</code> in the above by your actual server IP address. Replace <code>192.168.1.1</code> and <code>wlp3s0</code> by your actual default
+            gateway. If you do not know your default gateway already, you can obtain it by issuing the command <code>ip r</code>.</p>
+            <h3><a id="2-8"></a>2.8. Run WireGuard</h3>
+            <blockquote>
+                <code>sudo wg-quick up wg0</code>
+            </blockquote>
+            <p>You can test your connection by visiting <a href="https://whatismyipaddress.com/" target="_blank">https://whatismyipaddress.com</a> in Firefox.</p>
+            <h3><a id="2-9"></a>2.9. Disconnect</h3>
+            <p>Stop WireGuard:</p>
+            <blockquote>
+                <code>sudo wg-quick down wg0</code>
+            </blockquote>
+            <p>Stop Shadowsocks:</p>
+            <blockquote>
+                <code>sudo systemctl stop shadowsocks-libev</code>
+            </blockquote>
+            <p>Delete the static route:</p>
+            <blockquote>
+                <code>sudo ip route del 22.22.22.22 via 192.168.1.1 dev wlp3s0</code>
+            </blockquote>
+            <p>Replace <code>22.22.22.22</code> in the above by your actual server IP address. Replace <code>192.168.1.1</code> and <code>wlp3s0</code> by your actual default
+            gateway.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>For WireGuard, the best place to get help is the <code>#wireguard</code> IRC channel on <a href="https://web.libera.chat/#wireguard" target="_blank">libera.chat</a>.</p>
+            <p>For Shadowsocks issues, see the <a href="https://github.com/shadowsocks/shadowsocks-libev/issues" target="_blank">GitHub issues page</a>.</p>
+            <p><em>Updated 2022-02-08</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

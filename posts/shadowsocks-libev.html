@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>How to Install, Configure, and Run Shadowsocks-Libev</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>How to Install, Configure, and Run Shadowsocks-Libev</h1>
+            <p>Shadowsocks is an important tool for censorship circumvention.</p>
+            <p>The original Shadowsocks was written in Python. It was created by a Chinese developer named clowwindy. In 2015 clowwindy was contacted by the Chinese police and
+            compelled to stop working on the project.</p>
+            <p>Shadowsocks-Libev is a rewrite in pure C. It aims to be a lightweight implementation of the Shadowsocks protocol in order to keep resource usage as low as
+            possible.</p>
+            <p>The procedures on this page were tested with Ubuntu 20.04, so they will be similar on recent versions of Debian. We also give some notes to help CentOS users. Note
+            that CentOS 8 reaches end-of-life on December 31, 2021.</p>
+            <p>The <a href="https://gfw.report/blog/ss_tutorial/en/" target="_blank">GFW Report</a> recommends using a random port number, an AEAD cipher, a strong password, and
+            TCP mode only. These suggestions have been incorporated into this tutorial.</p>
+            <p>Shadowsocks-Libev receives bug fixes, but new development going forward will be in Shadowsocks-Rust.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Generate Port Number and Password</h3>
+            <p>You will need an unusual port number and a strong password for your Shadowsocks server. First generate a random port number like this:</p>
+            <blockquote>
+                <code>echo $((1024 + $RANDOM))</code>
+            </blockquote>
+            <p>The shell function RANDOM gives you a pseudo-random integer between 0 and 32767, so after evaluating the arithmetical expression, you will end up with a port number
+            between 1024 and 33791. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>5405</code>
+            </blockquote>
+            <p>Also generate a random password:</p>
+            <blockquote>
+                <code>openssl rand -base64 24</code>
+            </blockquote>
+            <p>The <code>openssl rand -base64</code> function gives you a random number, expressed in base-64 notation. Because of the argument <code>24</code>, it will be based
+            on 24 bytes or 192 bits. The result will have 32 base-64 characters. In our examples on the rest of this page, we will use the result:</p>
+            <blockquote>
+                <code>vJYEKOgxcZsgPRA4zT3L5Sdu/NCo3KWY</code>
+            </blockquote>
+            <h3><a id="1-2"></a>1.2. Open Firewall</h3>
+            <p>If you have installed a firewall on your server, you need to open a port to allow Shadowsocks-Libev to receive client input. Choose the port on which
+            Shadowsocks-Libev will listen. Open that port for TCP and, optionally, for UDP. In the rest of this article, we’ll use <code>5405</code> as our example of a
+            Shadowsocks port.</p>
+            <p>If you’re using <code>firewalld</code>, your commands to open the port will look like this:</p>
+            <blockquote>
+                <code>firewall-cmd --permanent --add-port=5405/tcp</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --reload</code>
+            </blockquote>
+            <p>Here are the same command templates for <code>nftables</code> users, assuming you’re using the table <code>inet filter</code> and your port is
+            <code>5405</code>:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport 5405 counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <p>Similar rules can be created for <code>iptables</code> users. Again, we assume you have a policy of dropping input unless it’s explicitly accepted, and we assume
+            you have previously installed and configured the <code>iptables-persistent</code> package.</p>
+            <blockquote>
+                <code>iptables -A INPUT -p tcp --dport 5405 -j ACCEPT</code>
+            </blockquote>
+            <blockquote>
+                <code>dpkg-reconfigure iptables-persistent</code>
+            </blockquote>
+            <p>For users of the <code>ufw</code> frontend for <code>iptables</code>, the equivalent command would be:</p>
+            <blockquote>
+                <code>ufw allow 5405/tcp</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Method #1 — Install from Repositories</h3>
+            <p>Installing from the regular repositories is the easiest method of all. On Debian or Ubuntu, issue the commands:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install shadowsocks-libev -y</code>
+            </blockquote>
+            <p>On Ubuntu 20.04, this installs Shadowsocks-Libev version 3.3.4. The service <code>shadowsocks-libev</code> is already running the program <code>ss-server</code>,
+            based on the configuration file in <code>/etc/shadowsocks-libev/config.json</code>. Edit the configuration file:</p>
+            <blockquote>
+                <code>vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Insert the recommended values, changing the port number and password to match your chosen values:</p>
+            <blockquote>
+                <code>{<br>
+                "server":["::0","0.0.0.0"],<br>
+                "server_port":5405,<br>
+                "encryption_method":"chacha20-ietf-poly1305",<br>
+                "password":"vJYEKOgxcZsgPRA4zT3L5Sdu/NCo3KWY",<br>
+                "mode":"tcp_only",<br>
+                "fast_open":false<br>
+                }</code>
+            </blockquote>
+            <p>Write the file to disk, and quit the editor. Restart the service with your new configuration:</p>
+            <blockquote>
+                <code>systemctl restart shadowsocks-libev</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Method #2 — Install with Snap</h3>
+            <p>Snap is already installed on Ubuntu 20.04.</p>
+            <p>On Debian, you must first install the Snap daemon:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install snapd -y</code>
+            </blockquote>
+            <p>For CentOS, see <a href="https://snapcraft.io/docs/installing-snap-on-centos" target="_blank">https://snapcraft.io/docs/installing-snap-on-centos</a>.</p>
+            <p>Once you have the snap daemon installed, install the latest stable snap of Shadowsocks-Libev like this:</p>
+            <blockquote>
+                <code>snap install core</code>
+            </blockquote>
+            <blockquote>
+                <code>snap install shadowsocks-libev --edge</code>
+            </blockquote>
+            <p>At the time of writing, this installs Shadowsocks-Libev version 3.3.5. Edit the configuration file:</p>
+            <blockquote>
+                <code>vi /var/snap/shadowsocks-libev/common/etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Insert the recommended values, changing the port number and password to match your chosen values:</p>
+            <blockquote>
+                <code>{<br>
+                "server":["::0","0.0.0.0"],<br>
+                "server_port":5405,<br>
+                "encryption_method":"chacha20-ietf-poly1305",<br>
+                "password":"vJYEKOgxcZsgPRA4zT3L5Sdu/NCo3KWY",<br>
+                "mode":"tcp_only",<br>
+                "fast_open":false<br>
+                }</code>
+            </blockquote>
+            <p>Write the file to disk, and quit the editor. Start the service with your configuration:</p>
+            <blockquote>
+                <code>systemctl start snap.shadowsocks-libev.ss-server-daemon</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Method #3 — Install with Teddysun Script</h3>
+            <p>An easy way to install, configure, and run Shadowsocks-Libev in a single step is to use the <a href="https://github.com/teddysun/shadowsocks_install/tree/master" target="_blank">Teddysun script</a>.</p>
+            <p>On a CentOS platform, you usually have to install <code>wget</code> first, then download and run the script <code>shadowsocks-libev.sh</code>:</p>
+            <blockquote>
+                <code>yum install wget -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/teddysun/shadowsocks_install/master/shadowsocks-libev.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x shadowsocks-libev.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./shadowsocks-libev.sh</code>
+            </blockquote>
+            <p>On Debian and Ubuntu, the <code>wget</code> utility is usually already installed, so just download and run the script <code>shadowsocks-libev-debian.sh</code>:</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/teddysun/shadowsocks_install/master/shadowsocks-libev-debian.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x shadowsocks-libev-debian.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./shadowsocks-libev-debian.sh</code>
+            </blockquote>
+            <p>Your run of the script will prompt you with some questions.</p>
+            <blockquote>
+                <code>#############################################################<br>
+                # Install Shadowsocks-libev server for Debian or Ubuntu #<br>
+                # Intro: https://teddysun.com/358.html #<br>
+                # Author: Teddysun &lt;i@teddysun.com&gt; #<br>
+                # Github: https://github.com/shadowsocks/shadowsocks-libev #<br>
+                #############################################################<br>
+                <br>
+                [Info] Latest version: shadowsocks-libev-3.3.4<br>
+                <br>
+                Please input password for shadowsocks-libev:<br>
+                (Default password: teddysun.com): vJYEKOgxcZsgPRA4zT3L5Sdu/NCo3KWY<br>
+                <br>
+                Please enter a port for shadowsocks-libev [1-65535]<br>
+                (Default port: 18122):5405<br>
+                <br>
+                Please select stream cipher for shadowsocks-libev:<br>
+                1) aes-256-gcm<br>
+                2) aes-192-gcm<br>
+                3) aes-128-gcm<br>
+                4) aes-256-ctr<br>
+                5) aes-192-ctr<br>
+                6) aes-128-ctr<br>
+                7) aes-256-cfb<br>
+                8) aes-192-cfb<br>
+                9) aes-128-cfb<br>
+                10) camellia-128-cfb<br>
+                11) camellia-192-cfb<br>
+                12) camellia-256-cfb<br>
+                13) xchacha20-ietf-poly1305<br>
+                14) chacha20-ietf-poly1305<br>
+                15) chacha20-ietf<br>
+                16) chacha20<br>
+                17) salsa20<br>
+                18) rc4-md5<br>
+                Which cipher you'd select(Default: aes-256-gcm):14<br>
+                <br>
+                ---------------------------<br>
+                cipher = chacha20-ietf-poly1305<br>
+                ---------------------------<br>
+                <br>
+                Press any key to start...or press Ctrl+C to cancel</code>
+            </blockquote>
+            <p>The script downloads, compiles, configures, and runs the software. The compile will take 10 minutes or so. At the end of the script, it displays some confirmation
+            messages:</p>
+            <blockquote>
+                <code>Congratulations, Shadowsocks-libev server install completed!<br>
+                Your Server IP : YY.YY.YY.YY<br>
+                Your Server Port : 5405<br>
+                Your Password : vJYEKOgxcZsgPRA4zT3L5Sdu/NCo3KWY<br>
+                Your Encryption Method: chacha20-ietf-poly1305</code>
+            </blockquote>
+            <p>The script places the configuration in <code>/etc/shadowsocks-libev/config.json</code>. The Shadowsocks executables are in <code>/usr/local/bin</code>. The
+            executable <code>ss-server</code> is running in the background and listening on the specified port (<code>5405</code> in our example).</p>
+            <p>Edit the configuration file:</p>
+            <blockquote>
+                <code>vi /etc/shadowsocks-libev/config.json</code>
+            </blockquote>
+            <p>Change the mode to TCP only, in line with the latest recommendations:</p>
+            <blockquote>
+                <code>{<br>
+                "server":"0.0.0.0",<br>
+                "server_port":5405,<br>
+                "password":"vJYEKOgxcZsgPRA4zT3L5Sdu/NCo3KWY",<br>
+                "timeout":300,<br>
+                "user":"nobody",<br>
+                "method":"chacha20-ietf-poly1305",<br>
+                "fast_open":false,<br>
+                "nameserver":"1.0.0.1",<br>
+                "mode":"tcp_only"<br>
+                }</code>
+            </blockquote>
+            <p>Write the file to disk, and quit the editor. Restart the program:</p>
+            <blockquote>
+                <code>/etc/init.d/shadowsocks restart</code>
+            </blockquote>
+            <p>You should see results:</p>
+            <blockquote>
+                <code>Stopping Shadowsocks-libev success<br>
+                Starting Shadowsocks-libev success</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Method #4 — Compile from Source</h3>
+            <p>If you do not want to use the automated script, you can manually compile Shadowsocks-Libev from source.</p>
+            <p>On CentOS, issue the following commands:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum group install "Development Tools" -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install asciidoc c-ares-devel libev-devel pcre-devel xmlto -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install epel-release -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install libsodium-devel mbedtls-devel -y</code>
+            </blockquote>
+            <blockquote>
+                <code>git clone https://github.com/shadowsocks/shadowsocks-libev.git</code>
+            </blockquote>
+            <blockquote>
+                <code>cd shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>git submodule init &amp;& git submodule update</code>
+            </blockquote>
+            <blockquote>
+                <code>./autogen.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./configure</code>
+            </blockquote>
+            <blockquote>
+                <code>make</code>
+            </blockquote>
+            <blockquote>
+                <code>make install</code>
+            </blockquote>
+            <p>On Debian or Ubuntu, issue the following commands:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install build-essential autoconf automake libtool -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install asciidoc libc-ares-dev libev-dev libpcre3-dev xmlto libsodium-dev libmbedtls-dev -y</code>
+            </blockquote>
+            <blockquote>
+                <code>git clone https://github.com/shadowsocks/shadowsocks-libev.git</code>
+            </blockquote>
+            <blockquote>
+                <code>cd shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>git submodule init &amp;& git submodule update</code>
+            </blockquote>
+            <blockquote>
+                <code>./autogen.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>./configure</code>
+            </blockquote>
+            <blockquote>
+                <code>make</code>
+            </blockquote>
+            <blockquote>
+                <code>make install</code>
+            </blockquote>
+            <p>Whether on CentOS or on Debian/Ubuntu, create a defaults file named <code>/etc/default/shadowsocks-libev</code>. Insert the contents:</p>
+            <blockquote>
+                <code>START=yes<br>
+                CONFFILE="/etc/shadowsocks-libev/config.json"<br>
+                DAEMON_ARGS=<br>
+                USER=nobody<br>
+                GROUP=nogroup<br>
+                MAXFD=32768</code>
+            </blockquote>
+            <p>Save the file <code>/etc/default/shadowsocks-libev</code>.</p>
+            <p>Copy the example systemd service file into place:</p>
+            <blockquote>
+                <code>cp debian/shadowsocks-libev.service /usr/lib/systemd/system</code>
+            </blockquote>
+            <p>Now edit the file <code>/usr/lib/systemd/system/shadowsocks-libev.service</code>. The binaries are expected to be in <code>/usr/bin</code>, but we have installed
+            them to <code>/usr/local/bin</code>. Therefore substitute this into the existing ExecStart line so that it reads:</p>
+            <blockquote>
+                <code>ExecStart=/usr/local/bin/ss-server -c $CONFFILE $DAEMON_ARGS</code>
+            </blockquote>
+            <p>Save the systemd service file <code>/usr/lib/systemd/system/shadowsocks-libev.service</code>.</p>
+            <p>Issue the command:</p>
+            <blockquote>
+                <code>systemctl daemon-reload</code>
+            </blockquote>
+            <p>Make a directory for your Shadowsocks-Libev configuration:</p>
+            <blockquote>
+                <code>mkdir /etc/shadowsocks-libev</code>
+            </blockquote>
+            <p>Create a file <code>/etc/shadowsocks-libev/config.json</code>. Here is a model you can adapt to your purposes. This configuration accepts TCP only and listens on
+            port <code>5405</code>. Change the sample values to your own choices.</p>
+            <blockquote>
+                <code>{<br>
+                "server":["::0","0.0.0.0"],<br>
+                "server_port":5405,<br>
+                "encryption_method":"chacha20-ietf-poly1305",<br>
+                "password":"vJYEKOgxcZsgPRA4zT3L5Sdu/NCo3KWY",<br>
+                "mode":"tcp_only",<br>
+                "fast_open":false<br>
+                }</code>
+            </blockquote>
+            <p>Once you have finished editing, save the file <code>/etc/shadowsocks-libev/config.json</code>.</p>
+            <p>Start Shadowsocks-Libev after every reboot, and also start it right now:</p>
+            <blockquote>
+                <code>systemctl enable shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start shadowsocks-libev</code>
+            </blockquote>
+            <p>Check that Shadowsocks-Libev is active and running:</p>
+            <blockquote>
+                <code>systemctl status shadowsocks-libev</code>
+            </blockquote>
+            <p>Check that Shadowsocks-Libev is listening on the expected port:</p>
+            <blockquote>
+                <code>ss -tulpn | grep 5405</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Clients</h2>
+            <h3><a id="2-1"></a>2.1. Client Availability</h3>
+            <p>Shadowsocks clients are available for Linux, Windows, macOS, Android, iOS, and OpenWRT. The <a href="https://shadowsocks.org/en/download/clients.html" target="_blank">Shadowsocks clients page</a> provides an overview. We will go into more details in the sections that follow.</p>
+            <h3><a id="2-2"></a>2.2. Linux Client</h3>
+            <p>You can install Shadowsocks from the repositories, with snap, or compile from source, in the same way as you did for the server.</p>
+            <p>If you install the Shadowsocks-Libev package, it automatically creates a systemd service defined in <code>/usr/lib/systemd/system/shadowsocks-libev.service</code>
+            with the configuration file <code>/etc/shadowsocks-libev/config.json</code>. If you like, you can edit the systemd service file to use <code>ss-local</code> instead of
+            <code>ss-server</code>, edit the configuration file to match your server, reload systemd, and restart the service. If you do not want to use systemd, or if you did not
+            use the package installation method, then proceed as follows.</p>
+            <p>Create a new configuration file <code>~/shadowsocks-libev.json</code>.</p>
+            <p>Insert contents modeled on the following, replacing <code>YY.YY.YY.YY</code> by your actual server IP address, and substituting in your actual port number and
+            password on the server:</p>
+            <blockquote>
+                <code>{<br>
+                "server": "YY.YY.YY.YY",<br>
+                "server_port": 5405,<br>
+                "local_address": "127.0.0.1",<br>
+                "local_port":1080,<br>
+                "password": "vJYEKOgxcZsgPRA4zT3L5Sdu/NCo3KWY",<br>
+                "method": "chacha20-ietf-poly1305",<br>
+                "timeout": 300,<br>
+                "fast_open": false,<br>
+                "nameserver": "1.1.1.1",<br>
+                "mode": "tcp_only"<br>
+                }</code>
+            </blockquote>
+            <p>The parameters you choose on the client must match up with what you chose on the server.</p>
+            <p>Start the Shadowsocks-Libev client running:</p>
+            <blockquote>
+                <code>ss-local -c ~/shadowsocks-libev.json &</code>
+            </blockquote>
+            <p>Check that Shadowsocks-Libev is running and listening on the expected port <code>1080</code>. Open a new Terminal window and issue the commands:</p>
+            <blockquote>
+                <code>ps -aux | grep shadowsocks-libev</code>
+            </blockquote>
+            <blockquote>
+                <code>ss -tulpn | grep 1080</code>
+            </blockquote>
+            <p>Open Firefox. From the hamburger menu, select <strong>Preferences</strong> &gt; <strong>General</strong>. Scroll down to <strong>Network Settings</strong>. Click
+            the <strong>Settings</strong> button.</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration</strong>.</li>
+                <li>Enter SOCKS Host <code>127.0.0.1</code>.</li>
+                <li>Enter Port <code>1080</code>.</li>
+                <li>Select <strong>SOCKS v5</strong>.</li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5</strong>.</li>
+                <li>Click <strong>OK</strong>.</li>
+            </ul>
+            <p>Check the end-to-end functionality to confirm that Shadowsocks-Libev and Firefox are configured correctly. With Shadowsocks-Libev still running, and Firefox
+            proxied, visit one or more of these sites:</p>
+            <ul>
+                <li>
+                    <a href="https://www.iplocation.net/" target="_blank">IP Location</a>
+                </li>
+                <li>
+                    <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>
+                </li>
+                <li>
+                    <a href="https://www.ipip.net/" target="_blank">IP IP</a>
+                </li>
+            </ul>
+            <p>In all cases, you should see the IP address of the server, not your local client.</p>
+            <p>The <a href="https://www.iplocation.net/" target="_blank">IP Location</a> site displays geolocation data from four databases (IP2Location, ipinfo.io, DB-IP, and
+            ipdata.co). Note that the four may differ due to timing delays in updating databases.</p>
+            <p>When you have finished using Shadowsocks, revert Firefox from <strong>Manual proxy configuration</strong> to <strong>Use system proxy settings</strong>.</p>
+            <p>In your Terminal window, do <strong>Ctrl</strong>+<strong>c</strong> to end the Shadowsocks-Libev process.</p>
+            <p>Alternatively, you can open a second Terminal window and identify the process id under which Shadowsocks-Libev is running:</p>
+            <blockquote>
+                <code>ss -tulpn | grep 1080</code>
+            </blockquote>
+            <p>Kill that process by process id. For example, if the process id is <code>38262</code>:</p>
+            <blockquote>
+                <code>kill 38262</code>
+            </blockquote>
+            <h3><a id="2-3"></a>2.3. Windows Client</h3>
+            <p>Download and unzip the Windows client from <a href="https://github.com/shadowsocks/shadowsocks-windows/releases" target="_blank">GitHub</a>.</p>
+            <p>Enter details which match those of the server. The screenshot below gives an example.</p><img src="../images/shadowsocks-windows.png" alt=
+            "Shadowsocks system tray icon and server editing on Windows">
+            <p>The Shadowsocks for Windows client continues to run in the system tray. The is the area on the right side of the taskbar, toward the bottom right of your Windows
+            desktop. Applications insert icons in the system tray to give you a quick entrance into the application. The Shadowsocks-Libev icon looks like a paper airplane. You
+            can see it in the screenshot above. Right-click on the Shadowsocks-Libev icon to bring up the menu. The following options appear:</p>
+            <ul>
+                <li>System proxy
+                    <ul>
+                        <li>Disable</li>
+                        <li>PAC</li>
+                        <li>Global</li>
+                    </ul>
+                </li>
+                <li>Servers
+                    <ul>
+                        <li>Load balance</li>
+                        <li>High availability</li>
+                        <li>Choose by statistics</li>
+                        <li>Server selection</li>
+                        <li>Edit servers</li>
+                        <li>Statistics config</li>
+                        <li>Share server config</li>
+                        <li>Scan QR code from screen</li>
+                        <li>Import URL from clipboard</li>
+                    </ul>
+                </li>
+                <li>PAC
+                    <ul>
+                        <li>Local PAC</li>
+                        <li>Online PAC</li>
+                        <li>Edit local PAC file</li>
+                        <li>Update local PAC from GFW list</li>
+                        <li>Edit user rule for GFW list</li>
+                        <li>Secure local PAC</li>
+                        <li>Copy local PAC URL</li>
+                        <li>Edit online PAC URL</li>
+                    </ul>
+                </li>
+                <li>Forward proxy</li>
+                <li>Start on Boot</li>
+                <li>Allow other devices to connect</li>
+                <li>Edit hotkeys</li>
+                <li>Help
+                    <ul>
+                        <li>Show logs</li>
+                        <li>Verbose logging</li>
+                        <li>Show plugin output</li>
+                        <li>Write translation template</li>
+                        <li>Update</li>
+                        <li>About</li>
+                    </ul>
+                </li>
+                <li>Quit</li>
+            </ul>
+            <p>Under the System proxy option, you can either disable the system proxy or set it to global. If you disable the system proxy, you must configure your individual
+            browser(s) to use a <code>SOCKS5</code> proxy server on <code>127.0.0.1</code> port <code>1080</code>.</p>
+            <p>The settings for the individual browser option are illustrated in the screenshot below:</p><img src="../images/firefox-windows.png" alt=
+            "Configure Firefox to use a proxy server">
+            <p>In global mode, the Windows system proxy is changed so that all applications that use the Windows system proxy will be affected. You can see the current value of
+            the Windows system proxy in <strong>Settings</strong> &gt; <strong>Network & Internet</strong> &gt; <strong>Proxy</strong>.</p>
+            <p>Proxy Automatic Configuration (PAC) configures Shadowocks to use or not use the proxy server, depending on whether the destination URL is in your PAC file.</p>
+            <p>The Load balance and High availability options will automatically switch between proxy servers.</p>
+            <p>For UDP, please use SocksCap or ProxyCap to force the program to go through the proxy server.</p>
+            <h3><a id="2-4"></a>2.4. macOS Client</h3>
+            <p>The main macOS client is ShadowsocksX-NG. It is available from <a href="https://github.com/shadowsocks/ShadowsocksX-NG/releases" target="_blank">GitHub</a>.</p>
+            <p>Download the latest release, e.g. <code>ShadowsocksX-NG.1.9.4.zip</code>.</p>
+            <p>Launch ShadowsocksX-NG from Finder. Click <strong>Open</strong>. Enter your macOS user password, and click <strong>OK</strong>. Click the button to allow
+            notifications.</p>
+            <p>The ShadowsocksX-NG paper airplane icon appears in the menu bar across top of screen.</p>
+            <p>Select global mode. Set up your Server Preferences on the client to match your server.</p><img src="../images/shadowsocks-macos.png" alt=
+            "ShadowsocksX-NG server editing on macOS">
+            <h3><a id="2-5"></a>2.5. Android Client</h3>
+            <p>You can get the Shadowocks for Android client from <a href="https://play.google.com/store/apps/details?id=com.github.shadowsocks" target="_blank">Google Play</a> or
+            <a href="https://github.com/shadowsocks/shadowsocks-android/releases" target="_blank">GitHub</a>.</p>
+            <p>On Android, Shadowsocks works more like a VPN. You don’t need to configure your browser to use a proxy server.</p>
+            <p>Note that we do not generally recommend mobile computing in environments where your security is threatened.</p>
+            <h3><a id="2-6"></a>2.6. iOS Client</h3>
+            <p>There are no free clients for iOS. Look in the iOS App Store for <a href="https://apps.apple.com/us/app/shadowrocket/id932747118" target="_blank">Shadowrocket</a>.</p>
+            <p>Note that we do not generally recommend mobile computing in environments where your security is threatened.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>If you have informal questions about Shadowsocks, you can ask on social media platforms such as <a href="https://www.reddit.com/r/dumbclub" target="_blank">Reddit</a>.</p>
+            <p>If you discover an issue with Shadowsocks, report it on the official GitHub issues page for the project:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-libev/issues" target="_blank">Shadowsocks-Libev</a>
+                </li>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-android/issues" target="_blank">Shadowsocks for Android</a>
+                </li>
+                <li>
+                    <a href="https://github.com/shadowsocks/shadowsocks-windows/issues" target="_blank">Shadowsocks for Windows</a>
+                </li>
+                <li>
+                    <a href="https://github.com/shadowsocks/ShadowsocksX-NG/issues" target="_blank">ShadowsocksX-NG for macOS</a>
+                </li>
+            </ul>
+            <h2>下载</h2>
+            <h3>东京数据中心</h3>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E4%BF%A1%E4%BB%B0%E7%9A%84%E6%A0%B9%E5%9F%BA.pdf" rel="nofollow">叶光明-信仰的根基.pdf</a> 2.2 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E4%BF%A1%E5%BF%83%E4%B9%8B%E9%81%93.pdf" rel="nofollow">叶光明-信心之道.pdf</a> 1.4 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%88%A4%E6%96%AD%E4%B9%8B%E9%81%93.pdf" rel="nofollow">叶光明-判断之道.pdf</a> 1.2 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%8D%81%E5%AD%97%E6%9E%B6%E4%B8%8A%E7%9A%84%E4%BA%A4%E6%8D%A2.pdf" rel="nofollow">叶光明-十字架上的交换.pdf</a> 944.5 kB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%9C%A3%E7%BB%8F%E8%87%AA%E4%BF%AE%E8%AF%BE%E7%A8%8B.pdf" rel="nofollow">叶光明-圣经自修课程.pdf</a> 1.6 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%9C%A8%E4%BD%A0%E9%87%8C%E9%9D%A2%E7%9A%84%E5%9C%A3%E7%81%B5.pdf" rel="nofollow">叶光明-在你里面的圣灵.pdf</a> 1.1 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%A4%AB%E7%88%B6%E4%BD%95%E6%B1%82.pdf" rel="nofollow">叶光明-夫父何求.pdf</a> 1.5 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%AD%A4%E5%84%BF%E5%AF%A1%E5%A6%87.pdf" rel="nofollow">叶光明-孤儿寡妇.pdf</a> 609.2 kB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E6%88%91%E5%8E%9F%E8%B0%85.pdf" rel="nofollow">叶光明-我原谅.pdf</a> 593.1 kB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8E-%E7%A5%9E%E6%98%AF%E5%AA%92%E4%BA%BA.pdf" rel="nofollow">叶光明-神是媒人.pdf</a> 1.9 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince1.mp3" rel="nofollow">叶光明derekprince1.mp3</a> 50.1
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince2.mp3" rel="nofollow">叶光明derekprince2.mp3</a> 52.5
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince3.mp3" rel="nofollow">叶光明derekprince3.mp3</a> 51.8
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince4.mp3" rel="nofollow">叶光明derekprince4.mp3</a> 52.4
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince5.mp3" rel="nofollow">叶光明derekprince5.mp3</a> 52.9
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince6.mp3" rel="nofollow">叶光明derekprince6.mp3</a> 52.7
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince7.mp3" rel="nofollow">叶光明derekprince7.mp3</a> 51.9
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince8.mp3" rel="nofollow">叶光明derekprince8.mp3</a> 52.2
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince9.mp3" rel="nofollow">叶光明derekprince9.mp3</a> 52.6
+            MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince10.mp3" rel="nofollow">叶光明derekprince10.mp3</a>
+            51.8 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E8%81%96%E7%B6%93-cmn-cu89s.epub" rel="nofollow">聖經-cmn-cu89s.epub</a> 1.8 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E8%81%96%E7%B6%93-cmn-ncvs.epub" rel="nofollow">聖經-cmn-ncvs.epub</a> 1.7 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E8%81%96%E7%B6%93-CNET_S.epub" rel="nofollow">聖經-CNET_S.epub</a> 7.2 MB</p>
+            <p><a href="https://s3.jp-tok.cloud-object-storage.appdomain.cloud/softmirror/%E8%81%96%E7%B6%93-CUV-S.epub" rel="nofollow">聖經-CUV-S.epub</a> 2.4 MB</p>
+            <h3>香港数据中心</h3>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E4%BF%A1%E4%BB%B0%E7%9A%84%E6%A0%B9%E5%9F%BA.pdf" rel="nofollow">叶光明-信仰的根基.pdf</a> 2.2
+            MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E4%BF%A1%E5%BF%83%E4%B9%8B%E9%81%93.pdf" rel="nofollow">叶光明-信心之道.pdf</a> 1.4 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%88%A4%E6%96%AD%E4%B9%8B%E9%81%93.pdf" rel="nofollow">叶光明-判断之道.pdf</a> 1.2 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%8D%81%E5%AD%97%E6%9E%B6%E4%B8%8A%E7%9A%84%E4%BA%A4%E6%8D%A2.pdf" rel="nofollow">叶光明-十字架上的交换.pdf</a> 944.5 kB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%9C%A3%E7%BB%8F%E8%87%AA%E4%BF%AE%E8%AF%BE%E7%A8%8B.pdf" rel="nofollow">叶光明-圣经自修课程.pdf</a> 1.6 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%9C%A8%E4%BD%A0%E9%87%8C%E9%9D%A2%E7%9A%84%E5%9C%A3%E7%81%B5.pdf" rel="nofollow">叶光明-在你里面的圣灵.pdf</a> 1.1 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%A4%AB%E7%88%B6%E4%BD%95%E6%B1%82.pdf" rel="nofollow">叶光明-夫父何求.pdf</a> 1.5 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E5%AD%A4%E5%84%BF%E5%AF%A1%E5%A6%87.pdf" rel="nofollow">叶光明-孤儿寡妇.pdf</a> 609.2 kB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E6%88%91%E5%8E%9F%E8%B0%85.pdf" rel="nofollow">叶光明-我原谅.pdf</a> 593.1 kB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8E-%E7%A5%9E%E6%98%AF%E5%AA%92%E4%BA%BA.pdf" rel="nofollow">叶光明-神是媒人.pdf</a> 1.9 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince1.mp3" rel="nofollow">叶光明derekprince1.mp3</a> 50.1 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince2.mp3" rel="nofollow">叶光明derekprince2.mp3</a> 52.5 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince3.mp3" rel="nofollow">叶光明derekprince3.mp3</a> 51.8 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince4.mp3" rel="nofollow">叶光明derekprince4.mp3</a> 52.4 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince5.mp3" rel="nofollow">叶光明derekprince5.mp3</a> 52.9 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince6.mp3" rel="nofollow">叶光明derekprince6.mp3</a> 52.7 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince7.mp3" rel="nofollow">叶光明derekprince7.mp3</a> 51.9 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince8.mp3" rel="nofollow">叶光明derekprince8.mp3</a> 52.2 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince9.mp3" rel="nofollow">叶光明derekprince9.mp3</a> 52.6 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E5%8F%B6%E5%85%89%E6%98%8Ederekprince10.mp3" rel="nofollow">叶光明derekprince10.mp3</a> 51.8 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E8%81%96%E7%B6%93-cmn-cu89s.epub" rel="nofollow">聖經-cmn-cu89s.epub</a> 1.8 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E8%81%96%E7%B6%93-cmn-ncvs.epub" rel="nofollow">聖經-cmn-ncvs.epub</a> 1.7 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E8%81%96%E7%B6%93-CNET_S.epub" rel="nofollow">聖經-CNET_S.epub</a> 7.2 MB</p>
+            <p><a href="https://softmirror.azurewebsites.net/%E8%81%96%E7%B6%93-CUV-S.epub" rel="nofollow">聖經-CUV-S.epub</a> 2.4 MB</p>
+            <p><em>Updated 2022-02-08</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

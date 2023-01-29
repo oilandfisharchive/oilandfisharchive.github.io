@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Simple Censorship Circumvention</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Simple Censorship Circumvention</h1>
+            <p>This page lists tools that do not need a page of their own. Some of these tools are free, either because they don’t need a server or because servers are donated by
+            volunteers.</p>
+            <p>Different tools will work in different countries. Simple methods of censorship circumvention may work against unsophisticated adversaries. If none of the simple
+            methods works, you may need to evaluate the more complex solutions described <a href="../index.html#2">elsewhere on this site</a>. There is often a trade-off between
+            convenience and effectiveness.</p>
+            <p>In some cases, clients are available for iOS and Android. Note that we do not generally recommend mobile computing in environments where your security is
+            threatened.</p>
+            <h2><a id="1"></a>1. Free Browser</h2>
+            <p>Free Browser is a free browser app for Android from the Great Fire anticensorship project. Website <a href="https://freebrowser.org/" target="_blank">freebrowser.org</a>. Email <a href="mailto:support@greatfire.org">support@greatfire.org</a>.</p>
+            <h2><a id="2"></a>2. DNS Servers</h2>
+            <p>Changing your DNS servers from national DNS servers to international DNS servers works against simple DNS poisoning by repressive governments. The method has been
+            used in Turkey. Popular choices for alternative DNS providers are Google (<code>8.8.8.8</code> and <code>8.8.4.4</code>) and Cloudflare (<code>1.1.1.1</code> and
+            <code>1.0.0.1</code>). The methods of changing your DNS provider varies from operating system to operating system. On Windows, it’s found under <strong>Control
+            Panel</strong> &gt; <strong>Network and Internet</strong> &gt; <strong>Network and Sharing Center</strong> &gt; <strong>Change adapter settings</strong>. Right-click
+            on your network interface, then select <strong>Properties</strong> &gt; <strong>Internet Protocol Version 4 (TCP/IPv4)</strong> &gt; <strong>Properties</strong> &gt;
+            <strong>Use the following DNS server addresses</strong>. This method does not require a server-side change.</p>
+            <h2><a id="3"></a>3. GoodbyDPI</h2>
+            <p>GoodbyeDPI is designed for countries such as Russia, where censorship rules are made centrally by Roskomnadzor, but implemented locally by thousands of small ISPs.
+            It is a client-side technique that works by disrupting the patterns by which Deep Packet Inspection (DPI) recognizes requests that must be censored. Available for
+            Windows from <a href="https://github.com/ValdikSS/GoodbyeDPI" target="_blank">GitHub</a>.</p>
+            <h2><a id="4"></a>4. GreenTunnel</h2>
+            <p>GreenTunnel disrupts Deep Packet Inspection (DPI) systems that small ISPs use to block access to certain websites. Available for Windows, macOS, and Linux from
+            <a href="https://github.com/SadeghHayeri/GreenTunnel" target="_blank">GitHub</a>.</p>
+            <h2><a id="5"></a>5. Hosts File</h2>
+            <p>Adding entries to the hosts file is a workaround for simple DNS poisoning. On Linux, the file to add to is <code>/etc/hosts</code>. On Windows, it’s
+            <code>C:\Windows\System32\drivers\etc\hosts</code> (with no file extension). This method does not require a server-side change.</p>
+            <h2><a id="6"></a>6. IEPL, IPLC, or MPLS</h2>
+            <p>International Ethernet Private Line (IEPL), International Private Lease Circuit (IPLC), or Multi Protocol Label Switching (MPLS) are available for enterprise use at
+            a cost of several thousand dollars per month. Contact your telco.</p>
+            <h2><a id="7"></a>7. Lantern</h2>
+            <p>Lantern is an anticensorship tool with servers in different countries around the world. Lantern is free, while Lantern Pro is a paid service. Client software is
+            available for Windows, Android, iOS, macOS, and Ubuntu Linux. Website <a href="https://getlantern.org/" target="_blank">getlantern.org</a>. Email <a href="mailto:support@getlantern.org">support@getlantern.org</a>.</p>
+            <h2><a id="8"></a>8. OpenVPN</h2>
+            <p>OpenVPN by itself is usually blocked by censors. The <a href="../index.html#2">articles on this website</a> offer various methods of disguising OpenVPN by combining
+            it with other tools. Website <a href="https://openvpn.net/" target="_blank">openvpn.net</a>.</p>
+            <h2><a id="9"></a>9. Pidgin + OTR</h2>
+            <p>Pidgin + OTR is more secure than the large, commercial messaging systems. Linux packages are available in many distributions’ repositories. Websites <a href="https://www.pidgin.im/" target="_blank">pidgin.im</a> and <a href="https://otr.cypherpunks.ca/" target="_blank">otr.cypherpunks.ca</a>.</p>
+            <h2><a id="10"></a>10. Psiphon</h2>
+            <p>Psiphon 3 is a free anticensorship tool for Android, iOS, and Windows. Website <a href="https://psiphon3.com/" target="_blank">psiphon3.com</a>. Email <a href="mailto:get@psiphon3.com">get@psiphon3.com</a> (if the website or download links are blocked or censored, you may request to have the downloads sent to you via
+            email).</p>
+            <h2><a id="11"></a>11. Tails</h2>
+            <p>The Tails live operating system incorporates Tor Browser. It has a couple of drawbacks in countries that censor the Internet. First, it is a huge download. Second,
+            it does not support meek-azure bridges. Nevertheless, it may be useful in your use case. Website <a href="https://tails.boum.org/" target="_blank">tails.boum.org</a>.</p>
+            <h2><a id="12"></a>12. Telegram Messenger</h2>
+            <p>We generally recommend avoiding mobile technology and accounts tied to your phone number. We include Telegram Messenger here only because it has become so popular.
+            It can use a proxy server to overcome censorship, either one that implements its own protocol (MTProto) or a standard SOCKS5 protocol (e.g. Shadowsocks). Website
+            <a href="https://telegram.org/" target="_blank">telegram.org</a> See also our page on <a href="telegram-privacy-settings.html">Telegram Privacy Settings</a>.</p>
+            <h2><a id="13"></a>13. Tor</h2>
+            <p>Since 2006, the Tor project has provided tools for anonymous browsing, with servers donated by volunteers. The Tor Browser is available for Windows, macOS, Linux,
+            and Android. Although plenty of countries would like to block Tor, it continues have <a href="tor-not-free-countries.html">many users in not-free countries</a>.
+            Website <a href="https://www.torproject.org/" target="_blank">www.torproject.org</a>. If the website is blocked in your country, send an email to <a href="mailto:gettor@torproject.org">gettor@torproject.org</a>. The email responder will automatically send you alternative download links for Tor Browser. The built-in
+            obfs4 and meek bridges work in many countries. If you need more bridges, email <a href="mailto:bridges@torproject.org">bridges@torproject.org</a>. See also the
+            <a href="introduction-to-tor-browser.html">Introduction to Tor Browser</a></p>
+            <h2><a id="14"></a>14. Ultrasurf</h2>
+            <p>Ultrasurf is a free tool allowing users to bypass censorship. It was originally designed for Internet users in mainland China. Clients are available for Windows and
+            Android. Website <a href="https://ultrasurf.us/" target="_blank">ultrasurf.us</a>.</p>
+            <h2><a id="15"></a>15. VPN Gate</h2>
+            <p>VPN Gate is a network of 6,000 volunteers organized by the University of Tsukuba, Japan. The volunteers run <a href="https://www.softether.org/" target="_blank">SoftEther</a> on their own computers, allowing VPN Gate users behind government firewalls to reach the Internet. Clients are available for Windows, macOS,
+            iOS, and Android. Website <a href="https://www.vpngate.net/" target="_blank">www.vpngate.net</a>.</p>
+            <p><em>Updated 2020-11</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

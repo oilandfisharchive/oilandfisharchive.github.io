@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VLESS with Wulabing XRay Script</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>VLESS with Wulabing XRay Script</h1>
+            <p>Xray is a fork of V2Ray. It is an important tool for accessing the international Internet. Xray/V2Ray offer a far wider range of features than Shadowsocks.</p>
+            <p>VLESS is a simplified protocol that can result in performance improvements over the original VMESS protocol. VLESS does not depend on the system time being correct.
+            Its authentication method continues to be Universally Unique Id (UUID), but the alterId of the VMESS protocol is not required.</p>
+            <p>This page shows you how to install XRay with the VLESS protocol using the Wulabing script. We give instructions for Debian 10+ (or Ubuntu) and CentOS 8 servers.
+            Note that CentOS 8 goes end-of-life on December 31, 2021, and so Debian/Ubuntu are preferred.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Obtain VPS and Domain Name</h3>
+            <p>First, you’ll need to rent a virtual private server (VPS). In the rest of this article, we’ll write its IP address as <code>zz.zz.zz.zz</code>.</p>
+            <p>Also obtain a domain name. We will give <code>yyyyy.xyz</code> as our example domain name, and <code>www.yyyyy.xyz</code> as our example hostname (fully qualified
+            domain name) for the XRay server.</p>
+            <p>Create a DNS <code>A</code> record pointing from hostname <code>www.yyyyy.xyz</code> to the server IP address <code>zz.zz.zz.zz</code>.</p>
+            <h3><a id="1-2"></a>1.2. Update Server</h3>
+            <p>Update your server. On CentOS 8:</p>
+            <blockquote>
+                <code>yum update -y</code>
+            </blockquote>
+            <p>On Debian 10+ or Ubuntu:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Open Firewall</h3>
+            <p>If you have implemented a firewall on your server, you must open port <code>80</code> and port <code>443</code>. On CentOS 8:</p>
+            <blockquote>
+                <code>firewall-cmd --permanent --zone=public --add-service=http</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --permanent --zone=public --add-service=https</code>
+            </blockquote>
+            <blockquote>
+                <code>firewall-cmd --reload</code>
+            </blockquote>
+            <p>On Debian 10+ or Ubuntu (assuming you used <code>nftables</code> to build your firewall):</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport { http, https } counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <p>Here is a template for a completed <code>/etc/nftables.conf</code>, where <code>xx.xx.xx.xx</code> represents your workstation’s IP address:</p>
+            <pre>table inet filter {
+        chain input {
+                type filter hook input priority filter; policy drop;
+                ct state established,related counter packets 0 bytes 0 accept
+                iif "lo" counter packets 0 bytes 0 accept
+                ip protocol icmp icmp type echo-request counter packets 0 bytes 0 accept
+                ip6 nexthdr ipv6-icmp icmpv6 type echo-request counter packets 0 bytes 0 accept
+                tcp dport 22 ip saddr xx.xx.xx.xx/32 counter packets 0 bytes 0 accept
+                tcp dport { 80, 443 } counter packets 0 bytes 0 accept
+        }
+
+        chain forward {
+                type filter hook forward priority filter; policy accept;
+        }
+
+        chain output {
+                type filter hook output priority filter; policy accept;
+        }
+}
+</pre>
+            <p>If you used <code>iptables</code> or <code>ufw</code> to build a firewall, you must issue the equivalent commands to open ports <code>80</code> and
+            <code>443</code>.</p>
+            <h3><a id="1-4"></a>1.4. Download and Run Wulabing Script</h3>
+            <p>Download and run the Wulabing script. (On CentOS, you may need to do <code>yum install wget</code> before this will work.)</p>
+            <blockquote>
+                <code>wget -N --no-check-certificate -q -O install.sh "https://raw.githubusercontent.com/wulabing/Xray_onekey/main/install.sh"</code>
+            </blockquote>
+            <blockquote>
+                <code>chmod +x install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>bash install.sh</code>
+            </blockquote>
+            <p>The script displays a menu offering the following options. This post adds English translations to the prompts:</p>
+            <blockquote>
+                <code>Xray 安装管理脚本 installation management script [1.3.3]<br>
+                ---authored by wulabing---<br>
+                https://github.com/wulabing<br>
+                <br>
+                当前已安装版本 Currently installed version：None<br>
+                —————————————— 安装向导 ——————————————<br>
+                0. 升级 脚本 Upgrade script<br>
+                1. 安装 Install Xray (VLESS+TCP+XTLS/TLS+Nginx)<br>
+                2. 安装 Install Xray (VLESS+TCP+XTLS/TLS+Nginx 及 VLESS+TCP+TLS+Nginx+WebSocket 回落并存模式)<br>
+                —————————————— 配置变更 ——————————————<br>
+                11. 变更 change UUID<br>
+                12. 变更 change TLS 最低适配版本 minimum version<br>
+                13. 变更 change 连接端口 connection port<br>
+                14. 变更 change WebSocket PATH<br>
+                —————————————— 查看信息 ——————————————<br>
+                21. 查看 View 实时访问日志 real-time access log<br>
+                22. 查看 View 实时错误日志 real-time error log<br>
+                23. 查看 View Xray 配置链接 configuration link<br>
+                —————————————— 其他选项 ——————————————<br>
+                31. 安装 Install 4 合 1 BBR、锐速安装脚本<br>
+                32. 安装 Install MTproxy(不推荐使用,请相关用户关闭或卸载)<br>
+                33. 卸载 Uninstall Xray<br>
+                34. 更新 Update Xray-core<br>
+                35. 安装 Install Xray-core 测试版(Pre)<br>
+                36. 手动更新SSL证书 Manually renew the SSL certificate<br>
+                40. 退出 Exit<br>
+                请输入数字 Please key in numbers：</code>
+            </blockquote>
+            <p>Choose option <code>1</code> to install XRay and Nginx.</p>
+            <p>After doing some checks and installing some packages, the script asks you some more questions.</p>
+            <blockquote>
+                <code>请输入你的域名信息(eg:www.wulabing.com):<br>
+                Please enter your domain information (e.g. www.wulabing.com):</code>
+            </blockquote>
+            <p>Put your hostname (fully qualified domain name) for the server, which in our example is <code>www.yyyyy.xyz</code>.</p>
+            <p>The script checks that the domain name resolves to this server’s IP address.</p>
+            <p>Next it asks for the port you want to connect on:</p>
+            <blockquote>
+                <code>请输入连接端口（default:443）:<br>
+                Please enter the connection port (default 443):</code>
+            </blockquote>
+            <p>We recommend you use the default port <code>443</code>.</p>
+            <p>You are asked to select which versions of TLS you want to support:</p>
+            <blockquote>
+                <code>请选择支持的 TLS 版本（默认：TLS1.3 only）:<br>
+                1: TLS1.1, TLS1.2 and TLS1.3（兼容模式）<br>
+                2: TLS1.2 and TLS1.3 (兼容模式)<br>
+                3: TLS1.3 only<br>
+                请输入：</code>
+            </blockquote>
+            <p>We recommend you choose option <code>2</code>, TLS 1.2 and TLS 1.3.</p>
+            <blockquote>
+                <code>请输入用于注册域名的邮箱(eg:xxx@gmail.com):<br>
+                Please enter the email address used to register the domain name</code>
+            </blockquote>
+            <p>Enter your email address.</p>
+            <p>At the end of the script’s run, it displays the parameters for the client:</p>
+            <blockquote>
+                <code>Xray 配置信息<br>
+                地址（address）: www.yyyyy.xyz<br>
+                端口（port）： 443<br>
+                用户 ID（UUID）： 484d6bb9-4af1-4f5b-b9f6-ff8b348dcdda<br>
+                流控（flow）： xtls-rprx-direct<br>
+                加密方式（security）： none<br>
+                传输协议（network）： tcp<br>
+                伪装类型（type）： none<br>
+                底层传输安全： xtls 或 tls</code>
+            </blockquote>
+            <p>It also displays the parameters as a <code>vless://</code> link. For example:</p>
+            <blockquote>
+                <code>[OK] URL 链接（VLESS + TCP + TLS）<br>
+                [OK] vless://484d6bb9-4af1-4f5b-b9f6-ff8b348dcdda@www.yyyyy.xyz:443?security=tls&amp;flow;=xtls-rprx-direct#TLS_wulabing-www.yyyyy.xyz</code>
+            </blockquote>
+            <p>You need these details, so copy them to your workstation’s clipboard and possibly also a text editor on your workstation.</p>
+            <p>If you lose the details, you can redisplay them by rerunning the script and choosing option 23:</p>
+            <blockquote>
+                <code>bash install.sh</code>
+            </blockquote>
+            <blockquote>
+                <code>23</code>
+            </blockquote>
+            <p>The script stores the server configuration JSON in the file <code>/usr/local/etc/xray/config.json</code>. You can display this file if you are interested:</p>
+            <blockquote>
+                <code>cat /usr/local/etc/xray/config.json</code>
+            </blockquote>
+            <p>Also, you can visit your web server <code>https://www.yyyyy.xyz</code> in a browser to see the camouflage website (WebGL Fluid Simulation) running on Nginx.</p>
+            <h2><a id="2"></a>2. Client</h2>
+            <h3><a id="2-1"></a>2.1. Windows</h3>
+            <p>Here is how to connect to your Xray server from a Windows client computer.</p>
+            <p>We will use V2RayN, the graphical user interface for V2Ray and Xray on the Windows platform.</p>
+            <p>Open a browser and visit <a href="https://github.com/2dust/v2rayN/releases" target="_blank">GitHub</a>. Download <code>v2rayN-Core.zip</code> for the latest
+            release. Version 3.21 and up support VLESS. After you’ve downloaded <code>v2rayN-Core.zip</code>, unzip the zip file.</p>
+            <p>Double-click <code>v2rayN.exe</code> to launch V2RayN. The first time you run the program, you may get a warning from Windows Defender SmartScreen to say Windows
+            protected your PC. Click <strong>More info</strong>, then click <strong>Run anyway</strong>.</p>
+            <p>The V2RayN icon appears in the system tray toward the bottom right of your Windows desktop. Click the V2RayN icon in the system tray to bring up the V2RayN
+            interface.</p>
+            <p>Under the <strong>Help</strong> button (the question mark icon), select <strong>语言-[中文简体]</strong> for simplified Chinese, or <strong>Language-[English]</strong>
+            for English.</p>
+            <p>Restart V2RayN to see the interface in the new language.</p><img src="../images/trojan-go-v2rayn-panel.png" alt="V2RayN panel">
+            <p>If you want to add a server manually, then click <strong>Servers</strong> to see the available options. However, we will use an easier method. This is to copy and
+            paste the <code>vless://</code> URL. In our example, the link was:</p>
+            <blockquote>
+                <code>vless://484d6bb9-4af1-4f5b-b9f6-ff8b348dcdda@www.yyyyy.xyz:443?security=tls&amp;flow;=xtls-rprx-direct#TLS_wulabing-www.yyyyy.xyz</code>
+            </blockquote>
+            <p>To copy and paste the <code>vless://</code> URL:</p>
+            <ol>
+                <li>Copy the link to your Windows clipboard</li>
+                <li>Click on the <strong>Server list</strong> area of your V2RayN window</li>
+                <li>Do <strong>Ctrl</strong>+<strong>v</strong> to paste the new server into V2RayN</li>
+            </ol>
+            <p>Highlight your server’s row, and press <strong>Enter</strong> to connect to it. Messages appear in the box at the bottom.</p>
+            <p>After the connection is made, you can optionally close the V2RayN panel. V2RayN continues to run and is accessible via its icon in the system tray.</p>
+            <p>Now that your Xray client (V2RayN) is connected to the Xray server, configure your browser to send traffic to the XRay client. (You could alternatively specify a
+            system-wide proxy server in the Windows <strong>Settings</strong> app, but in this tutorial we proxy at the browser level.)</p>
+            <p>In Firefox, click the hamburger menu, then select <strong>Settings</strong>. Select the <strong>General</strong> tab. Scroll down to the bottom to the heading
+            <strong>Network Settings</strong>. Click the <strong>Settings</strong> button.</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration.</strong></li>
+                <li>Fill in <code>127.0.0.1</code> in SOCKS Host.</li>
+                <li>Fill in <code>10808</code> in the Port. <em>Note that V2RayN uses port 10808 in contrast to the more common port 1080 for the local proxy.</em></li>
+                <li>Select <strong>SOCKS v5.</strong></li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5.</strong></li>
+            </ul><img src="../images/firefox-connection-settings.png" alt="Firefox network connection settings to use manual proxy configuration">
+            <p>In Chrome, you can do the same thing by installing the SwitchyOmega extension and configuring it to use the SOCKS5 proxy on <code>127.0.0.1</code> port
+            <code>10808</code>.</p>
+            <p>Your browser is now configured to proxy traffic to the V2RayN client, and the client is in turn connected to your XRay server. Your browsing requests and responses
+            are being transmitted, totally encrypted, via the remote XRay server.</p>
+            <p>Check the end-to-end functionality to confirm that V2RayN and Firefox/Chrome are configured correctly. With V2RayN still running, and Firefox/Chrome still proxied,
+            visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see the IP address of the server, not your local client.</p>
+            <h3><a id="2-2"></a>2.2. Linux</h3>
+            <p>Here is how to connect to your Xray server from a Linux client computer.</p>
+            <p>Open Firefox. Download the latest XRay for 64-bit Linux from <a href="https://github.com/XTLS/Xray-core/releases" target="_blank">GitHub</a>. At the time of
+            writing, it is version 1.4.2. The file to download for a 64-bit PC running Linux is <code>Xray-linux-64.zip</code>.</p>
+            <p>To unzip <code>Xray-linux-64.zip</code>, open a terminal and issue the commands:</p>
+            <blockquote>
+                <code>sudo apt install unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip Xray-linux-64.zip</code>
+            </blockquote><img src="../images/xray-linux-unzip.png" alt="Unzipping the Xray core for Linux zip file">
+            <p>In the terminal (or in a text editor), create an XRay client configuration file named <code>config.json</code>:</p>
+            <blockquote>
+                <code>vi config.json</code>
+            </blockquote>
+            <p>Insert the template below, substituting in your actual values for our example <code>address</code> and <code>id</code>:</p>
+            <pre>{
+  "inbounds": [
+    {
+      "port": 1080,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"]
+      },
+      "settings": {
+        "auth": "noauth",
+        "udp": false
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "www.yyyyy.xyz",
+            "port": 443,
+            "users": [
+              {
+                "id": "484d6bb9-4af1-4f5b-b9f6-ff8b348dcdda",
+                "alterId": 0,
+                "security": "auto",
+                "encryption": "none",
+                "flow": ""
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "allowInsecure": false
+        }
+      }
+    }
+  ]
+}
+</pre>
+            <p>Save the file with your revised values in it.</p>
+            <p>In your terminal emulator, start the V2Ray client running:</p>
+            <blockquote>
+                <code>./xray -config=config.json</code>
+            </blockquote><img src="../images/xray-linux-running.png" alt="Xray core running in a Linux terminal">
+            <p>Leave the terminal open, with Xray running in it.</p>
+            <p>Open Firefox. From the hamburger menu, select <strong>Settings</strong>. On the <strong>General</strong> page, in the <strong>Network Settings</strong> section,
+            click <strong>Settings</strong>. Set the network settings as follows:</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration.</strong></li>
+                <li>Fill in <code>127.0.0.1</code> in SOCKS Host.</li>
+                <li>Fill in <code>1080</code> in the Port.</li>
+                <li>Select <strong>SOCKS v5.</strong></li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5.</strong></li>
+            </ul><img src="../images/xray-linux-manual-proxy.png" alt="Firefox manual proxy configuration for Xray on Linux">
+            <p>Click <strong>OK</strong>.</p>
+            <p>Firefox now sends requests to the XRay client, which sends them to the XRay server. Do an end-to end test by visiting a site such as <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>.</p><img src="../images/xray-linux-ipchicken.png" alt=
+            "Checking your IP address through Xray on Linux at IPchicken">
+            <h3><a id="2-3"></a>2.3. macOS</h3>
+            <p>For macOS clients, use the latest release of Qv2ray from <a href="https://github.com/Qv2ray/Qv2ray/releases" target="_blank">GitHub</a>. The file to download is
+            named <code>Qv2ray.v2.7.0-pre2.macOS-x64.dmg</code>.</p>
+            <h3><a id="2-4"></a>2.4. Android</h3>
+            <p>Install V2RayNG from either <a href="https://play.google.com/store/apps/details?id=com.v2ray.ang" target="_blank">Google Play</a> or <a href="https://github.com/2dust/v2rayNG/releases" target="_blank">GitHub</a>. On Android, V2Ray/Xray clients act more like VPNs, so there is no need to proxy the
+            browser.</p>
+            <h3><a id="2-5"></a>2.5. iOS</h3>
+            <p>There are no free clients for iOS. Look in the iOS App Store for <a href="https://apps.apple.com/us/app/shadowrocket/id932747118" target="_blank">Shadowrocket</a>.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>If you have any other problems, SSH into your server to take a look at the logs. To view the V2Ray error log, enter the command:</p>
+            <blockquote>
+                <code>tail /var/log/xray/error.log</code>
+            </blockquote>
+            <p>To view the Nginx error log, enter the command:</p>
+            <blockquote>
+                <code>tail /etc/nginx/logs/error.log</code>
+            </blockquote>
+            <p>For the Wulabing script:</p>
+            <ul>
+                <li>Telegram support group <a href="https://t.me/wulabing_v2ray" target="_blank">https://t.me/wulabing_v2ray</a>
+                </li>
+                <li>Telegram announcement channel <a href="https://t.me/wulabing_channel" target="_blank">https://t.me/wulabing_channel</a>
+                </li>
+            </ul>
+            <p>If you discover an issue, report it on the official GitHub issues page for the software you are using:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/wulabing/Xray_onekey/issues" target="_blank">Wulabing Xray script</a>
+                </li>
+                <li>
+                    <a href="https://github.com/XTLS/Xray-core/issues" target="_blank">XRay</a>
+                </li>
+                <li>
+                    <a href="https://github.com/2dust/v2rayN/issues" target="_blank">V2RayN</a>
+                </li>
+                <li>
+                    <a href="https://github.com/2dust/v2rayNG/issues" target="_blank">V2RayNG</a>
+                </li>
+                <li>
+                    <a href="https://github.com/Qv2ray/Qv2ray/issues" target="_blank">Qv2ray</a>
+                </li>
+            </ul>
+            <h2><a id="a"></a>Appendix A. Server Configuration File</h2>
+            <p>Here is a template of the file <code>/usr/local/etc/xray/config.json</code> created by the Wulabing script.</p>
+            <pre>{
+  "log": {
+    "access": "/var/log/xray/access.log",
+    "error": "/var/log/xray/error.log",
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "484d6bb9-4af1-4f5b-b9f6-ff8b348dcdda",
+            "flow": "xtls-rprx-direct"
+          }
+        ],
+        "decryption": "none",
+        "fallbacks": [
+          {
+            "dest": 60000,
+            "alpn": "",
+            "xver": 1
+          },
+          {
+            "dest": 60001,
+            "alpn": "h2",
+            "xver": 1
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "xtls",
+        "xtlsSettings": {
+          "minVersion": "1.2",
+          "certificates": [
+            {
+              "certificateFile": "/usr/local/etc/xray/self_signed_cert.pem",
+              "keyFile": "/usr/local/etc/xray/self_signed_key.pem"
+            },
+            {
+              "certificateFile": "/ssl/xray.crt",
+              "keyFile": "/ssl/xray.key"
+            }
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom"
+    }
+  ]
+}
+</pre>
+            <h2><a id="b"></a>Appendix B. Client Configuration File</h2>
+            <p>The V2RayN GUI stores its server configurations internally in a file named <code>guiNConfig.json</code>. V2RayN converts this to a standard XRay client
+            configuration file named <code>config.json</code>. It will look something like this:</p>
+            <pre>{
+  "log": {
+    "access": "",
+    "error": "",
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "socks",
+      "port": 10808,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      },
+      "settings": {
+        "auth": "noauth",
+        "udp": true,
+        "allowTransparent": false
+      }
+    },
+    {
+      "tag": "http",
+      "port": 10809,
+      "listen": "127.0.0.1",
+      "protocol": "http",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      },
+      "settings": {
+        "udp": false,
+        "allowTransparent": false
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "www.xxxxx.xyz",
+            "port": 443,
+            "users": [
+              {
+                "id": "484d6bb9-4af1-4f5b-b9f6-ff8b348dcdda",
+                "alterId": 0,
+                "email": "t@t.tt",
+                "security": "auto",
+                "encryption": "none",
+                "flow": ""
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "allowInsecure": false
+        }
+      },
+      "mux": {
+        "enabled": false,
+        "concurrency": -1
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    },
+    {
+      "tag": "block",
+      "protocol": "blackhole",
+      "settings": {
+        "response": {
+          "type": "http"
+        }
+      }
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "api"
+        ],
+        "outboundTag": "api"
+      },
+      {
+        "type": "field",
+        "outboundTag": "proxy",
+        "domain": [
+          "geosite:google"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "domain": [
+          "domain:example-example.com",
+          "domain:example-example2.com"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "domain": [
+          "geosite:category-ads-all"
+        ]
+      }
+    ]
+  }
+}
+</pre>
+            <p><em>Updated 2021-06-16</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

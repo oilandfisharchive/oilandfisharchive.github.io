@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>How to Install, Configure, and Run Trojan-GFW</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>How to Install, Configure, and Run Trojan-GFW</h1>
+            <p>Trojan-GFW is intended to be an unidentifiable mechanism to help you bypass network restrictions such as the Great Firewall (GFW).</p>
+            <p>This page gives instructions for installing Trojan-GFW on CentOS 8 and Debian 10+ servers. Note that CentOS 8 reaches end-of-life on December 31, 2021. Therefore
+            Debian is recommended. Debian 10 is nicknamed “buster,” and Debian 11 is nicknamed “bullseye.”</p>
+            <p>We also give instructions for Windows, Linux, macOS, Android, and iOS clients.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <h3><a id="1-1"></a>1.1. Prerequisites</h3>
+            <p>You will need a domain name as well as your server. Set up a DNS <code>A</code> record pointing from your domain name to your server’s IP address. The domain name
+            used in the examples is <code>example.com</code> with a sample hostname of <code>www.example.com</code>.</p>
+            <h3><a id="1-2"></a>1.2. Create Camouflage Website</h3>
+            <p>Install and start Nginx. On CentOS:</p>
+            <blockquote>
+                <code>yum install nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nginx</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nginx</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl enable nginx</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start nginx</code>
+            </blockquote>
+            <p>Edit the Nginx default site configuration file:</p>
+            <ul>
+                <li>On CentOS, edit <code>/etc/nginx/nginx.conf</code></li>
+                <li>On Debian or Ubuntu, edit <code>/etc/nginx/sites-available/default</code></li>
+            </ul>
+            <p>Set the server name. For example, with our hostname of <code>www.example.com</code>, we would change the line for <code>server_name</code> to read:</p>
+            <blockquote>
+                <code>server_name www.example.com;</code>
+            </blockquote>
+            <p>Save the file. Restart Nginx with its new configuration:</p>
+            <blockquote>
+                <code>nginx -t</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl restart nginx</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl status nginx</code>
+            </blockquote>
+            <p>Add some sample content to the web server. On CentOS:</p>
+            <blockquote>
+                <code>yum install wget zip unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/arcdetri/sample-blog/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>cp -rf sample-blog-master/html/* /usr/share/nginx/html/</code>
+            </blockquote>
+            <p>On Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install zip unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/arcdetri/sample-blog/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>cp -rf sample-blog-master/html/* /var/www/html/</code>
+            </blockquote>
+            <p>You can now test that your basic web server and its content appear as expected in a browser by visiting <code>http://www.example.com</code> (of course, replacing
+            this example with your actual hostname).</p>
+            <h3><a id="1-3"></a>1.3. Obtain SSL Certificate</h3>
+            <p>The Let’s Encrypt project offers free SSL certificates. We will need one for Trojan.</p>
+            <p>On CentOS 8:</p>
+            <blockquote>
+                <code>yum install epel-release -y</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install certbot python3-certbot-nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot certonly --nginx</code>
+            </blockquote>
+            <p>On recent versions of Debian or Ubuntu:</p>
+            <blockquote>
+                <code>apt install certbot python3-certbot-nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot certonly --nginx</code>
+            </blockquote>
+            <p>For other platforms, consult the <a href="https://certbot.eff.org/" target="_blank">EFF Certbot page</a>.</p>
+            <p>Respond to the Certbot prompts:</p>
+            <ul>
+                <li>Enter your email address</li>
+                <li>Enter <code>a</code> for agree</li>
+                <li>Enter <code>y</code> or <code>n</code> to share your email address</li>
+                <li>Select the appropriate number of the host for which you require a certificate</li>
+            </ul>
+            <p>Let’s Encrypt SSL certificates are valid for 90 days. Set everything up for automatic renewal every 90 days. On CentOS 8:</p>
+            <blockquote>
+                <code>echo "0 0,12 * * * root python3 -c 'import random; import time; time.sleep(random.random() * 3600)' &amp;& certbot renew -q" | sudo tee -a /etc/crontab &gt;
+                /dev/null</code>
+            </blockquote>
+            <p>On recent versions of Debian or Ubuntu:</p>
+            <blockquote>
+                <code>certbot renew --dry-run</code>
+            </blockquote>
+            <p>Make your Let’s Encrypt certificates and keys readable and your Let’s Encrypt directories executable:</p>
+            <blockquote>
+                <code>chmod -R +rx /etc/letsencrypt</code>
+            </blockquote>
+            <p>The web server is now set up.</p>
+            <h3><a id="1-4"></a>1.4. Install Trojan</h3>
+            <p>Install Trojan from the repositories. On CentOS 8:</p>
+            <blockquote>
+                <code>yum config-manager --set-enabled PowerTools</code>
+            </blockquote>
+            <blockquote>
+                <code>yum install trojan -y</code>
+            </blockquote>
+            <p>On Debian 10+ or Ubuntu 20.04+:</p>
+            <blockquote>
+                <code>apt install trojan -y</code>
+            </blockquote>
+            <p>For other platforms, consult the <a href="https://github.com/trojan-gfw/trojan/wiki/Binary-&amp;-Package-Distributions" target="_blank">Trojan-GFW wiki on GitHub</a>.</p>
+            <h3><a id="1-5"></a>1.5. Create SystemD Service</h3>
+            <p>Creates a systemd service file in <code>/etc/systemd/system/trojan.service</code>.</p>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=trojan<br>
+                Documentation=man:trojan(1) https://trojan-gfw.github.io/trojan/config https://trojan-gfw.github.io/trojan/<br>
+                After=network.target network-online.target nss-lookup.target mysql.service mariadb.service mysqld.service<br>
+                <br>
+                [Service]<br>
+                Type=simple<br>
+                StandardError=journal<br>
+                User=nobody<br>
+                AmbientCapabilities=CAP_NET_BIND_SERVICE<br>
+                ExecStart=/usr/bin/trojan /etc/trojan/config.json<br>
+                ExecReload=/bin/kill -HUP $MAINPID<br>
+                Restart=on-failure<br>
+                RestartSec=1s<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <p>Save the systemd service file.</p>
+            <h3><a id="1-6"></a>1.6. Configure Trojan</h3>
+            <p>Configure Trojan by editing the configuration file <code>/etc/trojan/config.json</code>. Replace the template values by your actual values:</p>
+            <ul>
+                <li>Insert your own value for <code>password1</code> and remove the trailing comma.</li>
+                <li>Delete the line for <code>password2</code></li>
+                <li>Your certificate is in <code>/etc/letsencrypt/live/www.example.com/fullchain.pem</code>, so specify that on the <code>cert</code> line.</li>
+                <li>Your key is in <code>/etc/letsencrypt/live/www.example.com/privkey.pem</code>, so specify that on the <code>key</code> line.</li>
+            </ul>
+            <p>Save the file <code>/etc/trojan/config.json</code>.</p>
+            <h3><a id="1-7"></a>1.7. Configure Trojan</h3>
+            <p>Make Trojan start after every reboot, and start it now:</p>
+            <blockquote>
+                <code>systemctl enable trojan</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start trojan</code>
+            </blockquote>
+            <p>Check that Trojan is listening on port <code>443</code>, while Nginx is listening on port <code>80</code>:</p>
+            <blockquote>
+                <code>ss -tulpn</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Clients</h2>
+            <h3><a id="2-1"></a>2.1. Windows</h3>
+            <p>Open a browser, and visit the <a href="https://github.com/trojan-gfw/trojan/releases" target="_blank">Trojan-GFW repository on GitHub</a>.</p>
+            <p>Download the latest release of the Trojan for Windows zip file. Right-click on the zip file and select <strong>Extract All...</strong> to unzip the zip file. In the
+            extracted folder named <code>trojan</code>, edit the file <code>config.json</code>:</p>
+            <ul>
+                <li>For <code>remote_addr</code> put your actual hostname, for example, <code>www.example.com</code>.</li>
+                <li>Replace <code>password1</code> with your choice for the password.</li>
+            </ul>
+            <p>These values must match your server. When you have finished editing, save the file and close the editor.</p>
+            <p>Open a Command Prompt by doing <strong>Win</strong>+<strong>r</strong>, typing <code>cmd</code>, and clicking <strong>OK</strong>.</p>
+            <p>Change into the unzipped directory. For example, if you are on version 1.16.0, then the command to change into the directory would be:</p>
+            <blockquote>
+                <code>cd Downloads\trojan-1.16.0-win\trojan</code>
+            </blockquote>
+            <p>Launch Trojan by issuing the command:</p>
+            <blockquote>
+                <code>trojan</code>
+            </blockquote>
+            <p>You will see a message, <code>[WARN] trojan service (client) started at 127.0.0.1:1080</code>. This means Trojan is listening on localhost port <code>1080</code>.
+            Leave the Command Prompt window open.</p>
+            <p>Configure your browser to use Trojan, which is listening on localhost port <code>1080</code>.</p>
+            <ul>
+                <li>In Firefox, from the hamburger menu select <strong>Options</strong>. Under <strong>Network Settings</strong>, select <strong>Settings</strong>. Choose
+                <strong>Manual proxy configuration</strong>, SOCKS Host <code>127.0.0.1</code>, Port <code>1080</code>, <strong>SOCKS v5</strong>. Choose <strong>Proxy DNS when
+                using SOCKS v5</strong>. Click <strong>OK</strong>.</li>
+                <li>In Chrome, you can configure your browser to use a proxy server by installing and configuring the extension SwitchyOmega by FelisCatus from the <a href="https://chrome.google.com/webstore/category/extensions" target="_blank">Chrome Web Store</a>. Configure it to use the SOCKS5 proxy server on
+                <code>127.0.0.1</code> port <code>1080</code>.
+                </li>
+            </ul>
+            <p>Test your browser by visiting <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see your server IP address, not your client IP
+            address.</p>
+            <p>When you’ve finished browsing, close the Command Prompt window with Trojan running in it. Set your browser back to its direct, non-proxied settings.</p>
+            <h3><a id="2-2"></a>2.2. Linux</h3>
+            <p>Open Firefox and visit the releases page for <a href="https://github.com/trojan-gfw/trojan/releases" target="_blank">Trojan-GFW on GitHub</a>.</p>
+            <p>Download the 64-bit Linux version of the latest release. By default it will be saved in your <code>Downloads</code> folder.</p>
+            <p>Open a terminal emulator. Change into your <code>Downloads</code> directory:</p>
+            <blockquote>
+                <code>cd Downloads</code>
+            </blockquote>
+            <p>Install the xz utilities. On CentOS, the package is named <code>xz</code>:</p>
+            <blockquote>
+                <code>sudo yum install xz -y</code>
+            </blockquote>
+            <p>On Debian or Ubuntu, the package is named <code>xz-utils</code>:</p>
+            <blockquote>
+                <code>sudo apt install xz-utils -y</code>
+            </blockquote>
+            <p>Extract the archive. For example, if you are on version 1.16.0, the commands would be:</p>
+            <blockquote>
+                <code>unxz trojan-1.16.0-linux-amd64.tar.xz</code>
+            </blockquote>
+            <blockquote>
+                <code>tar -xf trojan-1.16.0-linux-amd64.tar</code>
+            </blockquote>
+            <p>Change into the extracted directory:</p>
+            <blockquote>
+                <code>cd trojan</code>
+            </blockquote>
+            <p>Copy the sample Trojan client configuration file to the configuration file that will be used:</p>
+            <blockquote>
+                <code>cp examples/client.json-example config.json</code>
+            </blockquote>
+            <p>Edit the configuration file <code>config.json</code>. Make these changes:</p>
+            <ul>
+                <li>Replace remote address <code>example.com</code> by your actual server name, e.g. <code>www.example.com</code>.</li>
+                <li>Replace <code>password1</code> by your actual password.</li>
+                <li>On Linux, you need to set <code>verify</code> in the <code>ssl</code> section to <code>false</code>.</li>
+            </ul>
+            <p>Save the file.</p>
+            <p>Now configure Firefox to use Trojan, which in a few moments we will make listen on localhost port <code>1080</code>. From the hamburger menu in Firefox, select
+            <strong>Options</strong>. Under <strong>Network Settings</strong>, select <strong>Settings</strong>.</p>
+            <ul>
+                <li>Choose <strong>Manual proxy configuration</strong>.</li>
+                <li>SOCKS Host <code>127.0.0.1</code>.</li>
+                <li>Port <code>1080</code>.</li>
+                <li>Select version <strong>SOCKS v5</strong>.</li>
+                <li>Check <strong>Proxy DNS when using SOCKS v5</strong>.</li>
+            </ul>
+            <p>Click <strong>OK</strong>.</p>
+            <p>Now, back in your terminal emulator, launch the Trojan executable:</p>
+            <blockquote>
+                <code>./trojan</code>
+            </blockquote>
+            <p>You will see a message, <code>[WARN] trojan service (client) started at 127.0.0.1:1080</code>. This means Trojan is listening on localhost port <code>1080</code>.
+            Leave the terminal emulator window open.</p>
+            <p>Test your entire configuration end-to-end (client and server) by visiting <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see your
+            server IP address, not your client IP address.</p>
+            <p>In your terminal emulator, do <strong>Ctrl</strong>+<strong>c</strong> to end Trojan. Close the terminal emulator. Set Firefox back to its direct, non-proxied
+            settings.</p>
+            <h3><a id="2-3"></a>2.3. macOS</h3>
+            <p>Download the TrojanX app for macOS from <a href="https://github.com/JimLee1996/TrojanX/releases" target="_blank">GitHub</a>.</p>
+            <p>You will need to override the macOS security settings, since the developer is unknown. In macOS Catalina and macOS Mojave, when an app fails to install because it
+            hasn’t been notarized or is from an unidentified developer, it will appear in <strong>System Preferences</strong> &gt; <strong>Security & Privacy</strong> under the
+            <strong>General</strong> tab. Click <strong>Open Anyway</strong>.</p><img src="../images/trojan-gfw-macos-1.jpg" alt=
+            "MacOS Open anyway for app from unidentified developer">
+            <p>An icon (P in a circle) appears in the menu bar toward the top right of your desktop. Click this icon to open the options menu.</p>
+            <p>Set <strong>Global Mode</strong> on. The icon changes to a G in a circle.</p><img src="../images/trojan-gfw-macos-2.jpg" alt="MacOS options menu for TrojanX">
+            <p>Select <strong>Servers</strong> and then <strong>Server Preferences</strong> to add a new server. Enter the host address and password, and click
+            <strong>OK</strong>.</p>
+            <p>In Safari, visit <a href="https://ipchicken.com/" target="_blank">IP Chicken</a> to confirm your IP address.</p>
+            <h3><a id="2-4"></a>2.4. Android</h3>
+            <p>Install Igniter Trojan Android Client from <a href="https://play.google.com/store/apps/details?id=io.github.trojan_gfw.igniter" target="_blank">Google Play</a> or
+            <a href="https://github.com/trojan-gfw/igniter/releases" target="_blank">GitHub</a>.</p>
+            <p>Open the Igniter app. Insert values corresponding to your server.</p>
+            <p>Click the <strong>START</strong> button. Android warns you that Igniter wants to create a VPN connection. Click <strong>OK</strong>.</p>
+            <p>Test your entire configuration end-to-end (client and server) by opening a browser on your Android device and visiting <a href="https://ipchicken.com/" target="_blank">IP Chicken</a>. You should see your server IP address, not your client IP address.</p>
+            <p>Click the <strong>STOP</strong> button to terminate.</p>
+            <p>Note that we do not generally recommend mobile computing in environments where your security is threatened.</p>
+            <h3><a id="2-5"></a>2.5. iOS</h3>
+            <p>There are no free apps for iOS, but you can try <a href="https://apps.apple.com/us/app/shadowrocket/id932747118" target="_blank">Shadowrocket</a>.</p>
+            <p>Note that we do not generally recommend mobile computing in environments where your security is threatened.</p>
+            <h2><a id="3"></a>3. Get Help and Report Issues</h2>
+            <p>You can find more information on Trojan on the <a href="https://github.com/trojan-gfw/trojan/wiki" target="_blank">Trojan wiki</a>.</p>
+            <p>If you have any problems, here are some steps you can take to troubleshoot.</p>
+            <p>Firstly, double-check that your client configuration file is an exact match for the settings on your server.</p>
+            <p>On the server look for messages with these commands:</p>
+            <blockquote>
+                <code>systemctl status trojan</code>
+            </blockquote>
+            <blockquote>
+                <code>journalctl -xe</code>
+            </blockquote>
+            <blockquote>
+                <code>journalctl -u trojan</code>
+            </blockquote>
+            <p>If you still have a problem, you can create a new issue for the software you are using:</p>
+            <ul>
+                <li>
+                    <a href="https://github.com/trojan-gfw/trojan/issues" target="_blank">Trojan-GFW</a>
+                </li>
+                <li>
+                    <a href="https://github.com/trojan-gfw/igniter/issues" target="_blank">Igniter</a>
+                </li>
+                <li>
+                    <a href="https://github.com/JimLee1996/TrojanX/issues" target="_blank">TrojanX</a>
+                </li>
+            </ul>
+            <p><em>Updated 2021-06-14</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

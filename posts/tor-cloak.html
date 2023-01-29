@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tor + Cloak</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Tor + Cloak</h1>
+            <p>In this arrangement we use Cloak to build a disguised private Tor bridge. This is an alternative to building an obfs4 private bridge. It hides the fact that you are
+            using Tor and protects you from malicious guard nodes.</p>
+            <p>We give instructions for a Debian 10 server, with a camouflage website running on Nginx. The process will be similar for an Ubuntu server. Before you set up your
+            server:</p>
+            <ul>
+                <li>You will need a domain name, either free or paid</li>
+                <li>You will need to create a DNS <code>A</code> record pointing from your server hostname to your server’s IP address</li>
+            </ul>
+            <p>In the examples in this article, we give the server host name as <code>zzz.yyyyy.xyz</code> and the server IP address as <code>zz.zz.zz.zz</code>.</p>
+            <p>We end the tutorial by describing the procedure for setting up a Ubuntu 21.04 client. If your server or client runs a recent version of Debian, the procedures will
+            be very similar to those for Ubuntu 21.04. If your PC runs Windows or macOS, you will need to experiment on your own.</p>
+            <h2><a id="1"></a>1. Set Up Camouflage Web Server</h2>
+            <h3><a id="1-1"></a>1.1. Open Firewall</h3>
+            <p>Firewalls may be implemented with <code>nftables</code>, <code>iptables</code>, <code>ufw</code>, <code>firewalld</code>, or Cloud security groups. Whichever one
+            you are using, you will need to open ports <code>80</code> and <code>443</code> for TCP input and persist your changes across reboots.</p>
+            <p>For example, if you are using <code>nftables</code> with a policy of <code>drop</code> on Debian 10, the commands would be:</p>
+            <blockquote>
+                <code>nft add rule inet filter input tcp dport { http, https } counter accept</code>
+            </blockquote>
+            <blockquote>
+                <code>nft list ruleset &gt; /etc/nftables.conf</code>
+            </blockquote>
+            <p>If you are not using nftables, then make the equivalent changes for your firewall.</p>
+            <h3><a id="1-2"></a>1.2. Implement BBR</h3>
+            <p>Bottleneck Bandwidth and Round-trip propagation time (BBR) is a TCP congestion control algorithm developed at Google. Under certain types of network congestion, it
+            will improve your latency. Implement BBR TCP congestion control on your server with the following commands:</p>
+            <blockquote>
+                <code>cat &gt;&gt; /etc/sysctl.d/50-bbr.conf &lt;&lt;EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>net.core.default_qdisc=fq</code>
+            </blockquote>
+            <blockquote>
+                <code>net.ipv4.tcp_congestion_control=bbr</code>
+            </blockquote>
+            <blockquote>
+                <code>EOF</code>
+            </blockquote>
+            <blockquote>
+                <code>sysctl -p /etc/sysctl.d/50-bbr.conf</code>
+            </blockquote>
+            <h3><a id="1-3"></a>1.3. Install Nginx</h3>
+            <p>Install the Nginx web server on your server:</p>
+            <blockquote>
+                <code>apt update &amp;& apt upgrade -y</code>
+            </blockquote>
+            <blockquote>
+                <code>apt install nginx -y</code>
+            </blockquote>
+            <h3><a id="1-4"></a>1.4. Configure Nginx</h3>
+            <p>We want to make the Nginx web site look as much as possible like a realistic production server. Therefore edit the main Nginx configuration file:</p>
+            <blockquote>
+                <code>vi /etc/nginx/nginx.conf</code>
+            </blockquote>
+            <p>Uncomment the line:</p>
+            <blockquote>
+                <code>server_tokens off;</code>
+            </blockquote>
+            <p>Save the main Nginx configuration file. Then edit the default site definition file:</p>
+            <blockquote>
+                <code>vi /etc/nginx/sites-available/default</code>
+            </blockquote>
+            <p>Insert the real server name, which in our example is <code>zzz.yyyyy.xyz</code>:</p>
+            <blockquote>
+                <code>server_name zzz.yyyyy.xyz;</code>
+            </blockquote>
+            <p>Immediately below that, insert lines that will allow only expected HTTP request methods:</p>
+            <pre>    if ($request_method !~ ^(GET|HEAD|POST)$ )
+    {
+            return 405;
+    }
+</pre>
+            <p>Just like a real web server, also add a line to provide some realistic browser caching:</p>
+            <blockquote>
+                <code>expires 1h;</code>
+            </blockquote><img src="../images/tc-nginx-config.png" alt="Nginx default site configuration">
+            <p>Save the default site definition file. Restart Nginx for all your changes:</p>
+            <blockquote>
+                <code>nginx -t</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl restart nginx</code>
+            </blockquote>
+            <h3><a id="1-5"></a>1.5. Add Camouflage Content to Web Server</h3>
+            <p>Add a few realistic webpages to your camouflage site. Here is an example of how you might do that. You can add different content if you have some.</p>
+            <blockquote>
+                <code>apt install wget zip unzip -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget https://github.com/arcdetri/sample-blog/archive/master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>unzip master.zip</code>
+            </blockquote>
+            <blockquote>
+                <code>cp -rf sample-blog-master/html/* /var/www/html/</code>
+            </blockquote>
+            <p>At this point, you can test to see if your host name resolves to your IP address by opening a browser on your PC and visiting the HTTP version of your site. Using
+            our example of a host named <code>zzz.yyyyy.xyz</code>, that would be:</p>
+            <blockquote>
+                <code>http://zzz.yyyyy.xyz</code>
+            </blockquote>
+            <h3><a id="1-6"></a>1.6. Add SSL Certificate to Web Server</h3>
+            <p>Now we make the site accessible by HTTPS on port 443, following the instructions for Nginx and Debian 10 on the <a href="https://certbot.eff.org/" target="_blank">Certbot website</a>.</p>
+            <blockquote>
+                <code>apt install certbot python-certbot-nginx -y</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot --nginx</code>
+            </blockquote>
+            <blockquote>
+                <code>certbot renew --dry-run</code>
+            </blockquote>
+            <p>You now have a working HTTPS camouflage website with a few sample pages on it. Test this by opening a browser on your PC and visiting the HTTPS version of your
+            site. In our example, that would be:</p>
+            <blockquote>
+                <code>https://zzz.yyyyy.xyz</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Install Tor on Server</h2>
+            <h3><a id="2-1"></a>2.1. Install Tor</h3>
+            <p>Install the prerequisite package:</p>
+            <blockquote>
+                <code>apt install apt-transport-https -y</code>
+            </blockquote>
+            <p>Add the Tor repositories to your Advanced Packaging Tool (APT) sources list:</p>
+            <blockquote>
+                <code>vi /etc/apt/sources.list</code>
+            </blockquote>
+            <p>Add lines at the bottom for the Tor project repositories for Debian <code>buster</code>:</p>
+            <blockquote>
+                <code>deb https://deb.torproject.org/torproject.org buster main</code>
+            </blockquote>
+            <blockquote>
+                <code>deb-src https://deb.torproject.org/torproject.org buster main</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <p>Add the GNU Privacy Guard (GPG) key used to sign the Tor packages.</p>
+            <blockquote>
+                <code>apt install gpg -y</code>
+            </blockquote>
+            <blockquote>
+                <code>wget -qO- https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc | gpg --import</code>
+            </blockquote>
+            <blockquote>
+                <code>gpg --export A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89 | apt-key add -</code>
+            </blockquote>
+            <p>Update your package lists:</p>
+            <blockquote>
+                <code>apt update</code>
+            </blockquote>
+            <p>Install Tor and the Tor Debian keyring from the Tor project repository:</p>
+            <blockquote>
+                <code>apt install tor deb.torproject.org-keyring -y</code>
+            </blockquote>
+            <h3><a id="2-2"></a>2.2. Configure Tor</h3>
+            <p>Edit the Tor configuration file:</p>
+            <blockquote>
+                <code>vi /etc/tor/torrc</code>
+            </blockquote>
+            <p>Delete the existing lines. Use the template below as a model for your configuration file. At a minimum, replace the <code>Nickname</code> with your own choice of
+            nickname. Notice that we did not open port <code>9001</code> in the firewall. Also notice the line <code>PublishServerDescriptor 0</code>. Both of these measures help
+            to keep the bridge hidden.</p>
+            <blockquote>
+                <code>Log notice file /var/log/tor/log<br>
+                ORPort 9001<br>
+                AssumeReachable 1<br>
+                SocksPort 0<br>
+                ORPort auto<br>
+                BridgeRelay 1<br>
+                Exitpolicy reject *:*<br>
+                PublishServerDescriptor 0<br>
+                Nickname yourchoiceofnick</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="2-3"></a>2.3. Restart Tor</h3>
+            <p>Restart Tor with your revised configuration file:</p>
+            <blockquote>
+                <code>systemctl restart tor</code>
+            </blockquote>
+            <p>Check the results:</p>
+            <blockquote>
+                <code>tail /var/log/tor/log</code>
+            </blockquote>
+            <p>After a minute or so, you should see <code>Bootstrapped 100% (done): Done</code>.</p>
+            <h2><a id="3"></a>3. Install Cloak on Server</h2>
+            <h3><a id="3-1"></a>3.1. Move HTTPS Site to Port 8443</h3>
+            <p>Right now, Nginx is listening on ports 80 and 443. We’re going to make Cloak listen on port 443, so we’ll move Nginx and make it listen on port 8443 instead.</p>
+            <p>Edit the Nginx default site definition file:</p>
+            <blockquote>
+                <code>vi /etc/nginx/sites-available/default</code>
+            </blockquote>
+            <p>Change the lines that make the SSL server listen on port 443 to make it listen on port 8443:</p>
+            <blockquote>
+                <code>listen [::]:8443 ssl ipv6only=on; # managed by Certbot<br>
+                listen 8443 ssl; # managed by Certbot</code>
+            </blockquote>
+            <p>Save the default site definition file. Restart Nginx to make this change take effect:</p>
+            <blockquote>
+                <code>systemctl restart nginx</code>
+            </blockquote>
+            <h3><a id="3-2"></a>3.2. Download Cloak</h3>
+            <p>Open a browser on your PC and visit the <a href="https://github.com/cbeuw/Cloak/releases" target="_blank">GitHub Cloak releases page</a>. Determine the version
+            number of the latest release. For example, right now it is <code>2.5.4</code>.</p>
+            <p>On your server, download the latest binary for 64-bit Linux:</p>
+            <blockquote>
+                <code>wget https://github.com/cbeuw/Cloak/releases/download/v2.5.4/ck-server-linux-amd64-v2.5.4</code>
+            </blockquote>
+            <p>Copy the binary into a directory in your path with the name <code>ck-server</code>:</p>
+            <blockquote>
+                <code>cp ck-server-linux-amd64-v2.5.4 /usr/local/bin/ck-server</code>
+            </blockquote>
+            <p>Make <code>ck-server</code> executable:</p>
+            <blockquote>
+                <code>chmod +x /usr/local/bin/ck-server</code>
+            </blockquote>
+            <p>Allow Cloak to bind to privileged ports (i.e. TCP/IP port numbers below 1024):</p>
+            <blockquote>
+                <code>setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/ck-server</code>
+            </blockquote>
+            <h3><a id="3-3"></a>3.3. Generate Public-Private Key Pair</h3>
+            <p>Generate a public-private key pair:</p>
+            <blockquote>
+                <code>ck-server -k</code>
+            </blockquote>
+            <p>The public key and private key are delivered, separated by a comma. Here is an example of what the result might look like:</p>
+            <blockquote>
+                <code>eRx9vO3x8i1hJ9PucrnlUsN74J/g7MPLymUJCrrQJVM=,MF2tHiGXjP3P3fIIxjt02un2G0qtXdbArmrWsTfz7FM=</code>
+            </blockquote>
+            <ul>
+                <li>The base-64 string <em>before</em> the comma is the <em>public</em> key, to be given to users</li>
+                <li>The base-64 string <em>after</em> the comma is the <em>private</em> key, to be kept on the server</li>
+            </ul>
+            <h3><a id="3-4"></a>3.4. Generate Administrator Id</h3>
+            <p>Generate a secret identifier for the administrator like this:</p>
+            <blockquote>
+                <code>ck-server -u</code>
+            </blockquote>
+            <p>It will produce a base-64 string that looks like this:</p>
+            <blockquote>
+                <code>SI6bHNp9+Mlc0+/LxhhYig==</code>
+            </blockquote>
+            <h3><a id="3-5"></a>3.5. Generate User Id</h3>
+            <p>Generate an identifier for an ordinary user. We will make this user have no bandwidth or credit limit restrictions.</p>
+            <blockquote>
+                <code>ck-server -u</code>
+            </blockquote>
+            <p>The command will produce a base-64 string that looks like this:</p>
+            <blockquote>
+                <code>lNEQtGxl6BgYmVg9N5kBRA==</code>
+            </blockquote>
+            <h3><a id="3-6"></a>3.6. Configure Cloak</h3>
+            <p>For your reference, there is a <a href="https://github.com/cbeuw/Cloak/blob/master/example_config/ckserver.json" target="_blank">sample configuration file on GitHub</a>.</p>
+            <p>Create a directory for Cloak:</p>
+            <blockquote>
+                <code>mkdir /etc/cloak</code>
+            </blockquote>
+            <p>Edit your server’s configuration file for Cloak:</p>
+            <blockquote>
+                <code>vi /etc/cloak/ckserver.json</code>
+            </blockquote>
+            <p>Insert contents like the example below, substituting in your user id, private key, and administrator id:</p>
+            <pre>{
+  "ProxyBook": {
+    "tor": [
+      "tcp",
+      "127.0.0.1:9001"
+    ]
+  },
+  "BindAddr": [
+    ":443"
+  ],
+  "BypassUID": [
+    "lNEQtGxl6BgYmVg9N5kBRA=="
+  ],
+  "RedirAddr": "127.0.0.1:8443",
+  "PrivateKey": "MF2tHiGXjP3P3fIIxjt02un2G0qtXdbArmrWsTfz7FM=",
+  "AdminUID": "SI6bHNp9+Mlc0+/LxhhYig==",
+  "DatabasePath": "/etc/cloak/userinfo.db",
+  "StreamTimeout": 300
+}</pre>
+            <ul>
+                <li><code>ProxyBook</code> tells Cloak where to forward authenticated proxy traffic to, which for us is Tor on port <code>9001</code></li>
+                <li><code>BindAddr</code> is a list of addresses Cloak will bind and listen to, which for us is <code>443</code></li>
+                <li><code>BypassUID</code> is a list of UIDs that are authorised without any bandwidth or credit limit restrictions</li>
+                <li><code>RedirAddr</code> is the redirection address when the incoming traffic is not from an authenticated Cloak client</li>
+                <li><code>PrivateKey</code> is the static curve25519 Diffie-Hellman private key encoded in base-64</li>
+                <li><code>AdminUID</code> is the user id of the admin user in base-64</li>
+                <li><code>DatabasePath</code> is the path to <code>userinfo.db</code> (if <code>userinfo.db</code> doesn’t exist in this directory, Cloak will create one
+                automatically)</li>
+                <li><code>StreamTimeout</code> is the number of seconds of no sent data after which the incoming Cloak client connection will be terminated</li>
+            </ul>
+            <p>Save the Cloak server configuration file.</p>
+            <h3><a id="3-7"></a>3.7. Configure Systemd for Cloak</h3>
+            <p>Create a systemd service file, so that we can make Cloak start after every reboot and run continually as a service:</p>
+            <blockquote>
+                <code>vi /usr/lib/systemd/system/cloak.service</code>
+            </blockquote>
+            <p>Insert contents like this:</p>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=Cloak Server<br>
+                After=network.target<br>
+                <br>
+                [Service]<br>
+                Type=simple<br>
+                ExecStart=/usr/local/bin/ck-server -c /etc/cloak/ckserver.json<br>
+                Restart=on-failure<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="3-8"></a>3.8. Run Cloak</h3>
+            <p>Make Cloak start after every reboot and run continually as a service:</p>
+            <blockquote>
+                <code>systemctl enable cloak</code>
+            </blockquote>
+            <blockquote>
+                <code>systemctl start cloak</code>
+            </blockquote>
+            <p>Check the status of the Cloak service:</p>
+            <blockquote>
+                <code>systemctl status cloak</code>
+            </blockquote>
+            <p>The above command should show that Cloak is <code>active (running)</code>.</p>
+            <blockquote>
+                <code>ss -tulpn | grep 443</code>
+            </blockquote>
+            <p>The above command should show that:</p>
+            <ul>
+                <li>Cloak (<code>ck-server</code>) is listening on port 443</li>
+                <li>Nginx is listening in port 8443</li>
+            </ul>
+            <p>Your work on the server is done for now, so exit your SSH session with the server:</p>
+            <blockquote>
+                <code>exit</code>
+            </blockquote>
+            <h3><a id="3-9"></a>3.9. Check from PC</h3>
+            <p>From your PC, check what an unauthorized visitor to your server would see. In our example, the address to put into your browser would be:</p>
+            <blockquote>
+                <code>https://zzz.yyyyy.xyz</code>
+            </blockquote>
+            <p>You should see an ordinary looking website.</p>
+            <h2><a id="4"></a>4. Set Up Debian/Ubuntu Client</h2>
+            <p>Now work on your PC, which in this tutorial is running Ubuntu 21.04. The procedure for a Debian PC will be very similar.</p>
+            <h3><a id="4-1"></a>4.1. Download Cloak Client</h3>
+            <p>In Firefox, go to <a href="https://github.com/cbeuw/Cloak/releases" target="_blank">GitHub</a> and determine the latest version of Cloak. We will use version
+            <code>2.5.4</code> as our example.</p>
+            <p>Still in your browser, download <code>ck-client-linux-amd64-v2.5.4</code> from GitHub to your PC’s <code>Downloads</code> directory.</p>
+            <p>Now switch to the terminal on your Debian/Ubuntu PC. Copy the binary into a directory that is in your path:</p>
+            <blockquote>
+                <code>sudo cp ~/Downloads/ck-client-linux-amd64-v2.5.4 /usr/local/bin/ck-client</code>
+            </blockquote>
+            <p>Make <code>ck-client</code> executable:</p>
+            <blockquote>
+                <code>sudo chmod +x /usr/local/bin/ck-client</code>
+            </blockquote><img src="../images/tc-cloak-client.png" alt="Downloading Cloak client">
+            <h3><a id="4-2"></a>4.2. Configure Cloak Client</h3>
+            <p>For your reference, there is a sample client configuration file on <a href="https://github.com/cbeuw/Cloak/blob/master/example_config/ckclient.json" target="_blank">GitHub</a>.</p>
+            <p>Edit your client’s configuration file for Cloak:</p>
+            <blockquote>
+                <code>vi ~/ckclient.json</code>
+            </blockquote>
+            <p>Insert contents like the example below, substituting in your user id, public key, and hostname:</p>
+            <pre>{
+  "Transport": "direct",
+  "ProxyMethod": "tor",
+  "EncryptionMethod": "aes-gcm",
+  "UID": "lNEQtGxl6BgYmVg9N5kBRA==",
+  "PublicKey": "eRx9vO3x8i1hJ9PucrnlUsN74J/g7MPLymUJCrrQJVM=",
+  "ServerName": "zzz.yyyyy.xyz",
+  "NumConn": 4,
+  "BrowserSig": "firefox",
+  "StreamTimeout": 300
+}</pre><img src="../images/tc-cloak-config.png" alt="Cloak client configuration">
+            <ul>
+                <li><code>Transport</code> can be either direct or CDN</li>
+                <li><code>ProxyMethod</code> is the name of the proxy method you are using</li>
+                <li><code>EncryptionMethod</code> is the name of the encryption algorithm you want Cloak to use, over and above the encryption in the proxy method (to avoid
+                fingerprinting of Tor, you must not leave this as <code>plain</code>)</li>
+                <li><code>UID</code> is your user id in base-64</li>
+                <li><code>PublicKey</code> is the static curve25519 public key, given by the server admin</li>
+                <li><code>ServerName</code> is the domain you want to make your ISP or firewall think you are visiting</li>
+                <li><code>NumConn</code> is the amount of underlying TCP connections you want to use</li>
+                <li><code>BrowserSig</code> is the browser you want to appear to be using</li>
+                <li><code>StreamTimeout</code> is the number of seconds of no sent data after which the incoming proxy connection will be terminated</li>
+            </ul>
+            <p>Save the file.</p>
+            <h3><a id="4-3"></a>4.3. Configure Systemd for Cloak</h3>
+            <p>Create a systemd service file, so that we can make Cloak start after every reboot and run continually as a service:</p>
+            <blockquote>
+                <code>sudo vi /usr/lib/systemd/system/cloak.service</code>
+            </blockquote>
+            <p>Insert contents like this.</p>
+            <ul>
+                <li>Replace <code>yourname</code> by your actual user name on the PC.</li>
+                <li>Replace <code>zz.zz.zz.zz</code> by your actual server IP address.</li>
+            </ul>
+            <blockquote>
+                <code>[Unit]<br>
+                Description=Cloak Client<br>
+                After=network.target<br>
+                <br>
+                [Service]<br>
+                Type=simple<br>
+                ExecStart=/usr/local/bin/ck-client -c /home/yourname/ckclient.json -s zz.zz.zz.zz<br>
+                Restart=on-failure<br>
+                <br>
+                [Install]<br>
+                WantedBy=multi-user.target</code>
+            </blockquote>
+            <p>Save the file.</p>
+            <h3><a id="4-4"></a>4.4. Download Tor Browser</h3>
+            <p>Open Firefox. Download the 64-bit Linux version of Tor Browser in your language from <a href="https://www.torproject.org/download/languages" target="_blank">Tor Project website</a>. For example, for English this would be the file <code>tor-browser-linux64-10.0.17_en-US.tar.xz</code>.</p>
+            <p>Open a terminal, and decompress the archive like this:</p>
+            <blockquote>
+                <code>cd ~/Downloads</code>
+            </blockquote>
+            <blockquote>
+                <code>tar -xf tor-browser-linux64-10.0.17_en-US.tar.xz</code>
+            </blockquote>
+            <h3><a id="4-5"></a>4.5. Install Tor Browser</h3>
+            <p>Issue the commands:</p>
+            <blockquote>
+                <code>cd tor-browser_en-US</code>
+            </blockquote>
+            <blockquote>
+                <code>./start-tor-browser.desktop --register-app</code>
+            </blockquote><img src="../images/tc-install-tb.png" alt="Installing Tor Browser on Debian/Ubuntu">
+            <h3><a id="4-6"></a>4.6. Run Cloak</h3>
+            <p>Issue these commands in turn:</p>
+            <blockquote>
+                <code>sudo systemctl enable cloak</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo systemctl start cloak</code>
+            </blockquote>
+            <p>Check that Cloak is active and listening on port 1984:</p>
+            <blockquote>
+                <code>sudo systemctl status cloak</code>
+            </blockquote>
+            <blockquote>
+                <code>sudo ss -tulpn | grep 1984</code>
+            </blockquote><img src="../images/tc-cloak-running.png" alt="Cloak client running on Linux">
+            <h3><a id="4-7"></a>4.7. Run Tor Browser</h3>
+            <p>In GNOME desktop, open <strong>Activities</strong>, or press the “Super” key (looks like a Windows icon). Search for <strong>Tor Browser</strong>. (You can, if you
+            wish, add Tor Browser to your Favorites bar after opening it.)</p>
+            <p>The first time you open Tor Browser, you must configure it.</p>
+            <ol>
+                <li>Click <strong>Configure</strong></li>
+                <li>Check <strong>Tor is censored in my country</strong></li>
+                <li>Select <strong>Provide a bridge I know</strong></li>
+                <li>Enter <code>127.0.0.1:1984</code></li>
+                <li>Click <strong>Connect</strong>.</li>
+            </ol><img src="../images/tc-configure-tb.png" alt="Configure Tor Browser network settings for bridge on localhost">
+            <h3><a id="4-8"></a>4.8. End-to-End Test</h3>
+            <p>In Tor Browser, visit <a href="https://check.torproject.org/" target="_blank">https://check.torproject.org</a>.</p><img src="../images/tor-cloak.png" alt=
+            "Check Tor access via Cloak">
+            <h2><a id="5"></a>5. Get Help and Report Issues</h2>
+            <ul>
+                <li>You can find out more about Cloak in the <a href="https://github.com/cbeuw/Cloak/blob/master/README.md" target="_blank">README on GitHub</a>
+                </li>
+                <li>You can ask general questions about Cloak on <a href="https://ntc.party/c/community-software/cloak/21" target="_blank">ntc.party</a>
+                </li>
+                <li>For Cloak issues, post in the <strong>Issues</strong> section for <a href="https://github.com/cbeuw/Cloak/issues" target="_blank">Cloak on GitHub</a>
+                </li>
+                <li>You can ask Tor questions on <a href="https://www.reddit.com/r/tor" target="_blank">Reddit</a> or <a href="https://tor.stackexchange.com/" target="_blank">Stack Exchange</a>
+                </li>
+            </ul>
+            <p><em>Updated 2021-06-19</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>

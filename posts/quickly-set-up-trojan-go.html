@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quickly Set Up Trojan-Go</title>
+    <link rel="stylesheet" type="text/css" href="../general.css">
+</head>
+<body>
+    <div id="header">
+        <div class="content">
+            <h2><a href="..">Oil and Fish</a></h2>
+        </div>
+    </div>
+    <div id="main">
+        <div class="content">
+            <h1>Quickly Set Up Trojan-Go</h1>
+            <p>This quick set-up procedure for a Trojan-Go server has been tested on Ubuntu 21.04. It should also work for recent versions of Debian.</p>
+            <h2><a id="1"></a>1. Server</h2>
+            <p>You need a virtual private server (VPS) and a domain name, with a DNS <code>A</code> record pointing from the server’s fully qualified domain name to its IP
+            address.</p>
+            <p>SSH into your server as root.</p>
+            <p>As a preliminary step, download the script for <code>acme.sh</code>, which is a front end to Let’s Encrypt:</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh</code>
+            </blockquote>
+            <p>Make the script executable:</p>
+            <blockquote>
+                <code>chmod +x acme.sh</code>
+            </blockquote>
+            <p>Use the script to specify your email address. Replace <code>my@example.com</code> in the example below by your actual email address:</p>
+            <blockquote>
+                <code>./acme.sh --register-account -m my@example.com</code>
+            </blockquote>
+            <p>Now for the main script. Download the one-click script from <a href="https://raw.githubusercontent.com/jinwyp/one_click_script/master/trojan_v2ray_install.sh" target="_blank">GitHub</a>:</p>
+            <blockquote>
+                <code>wget https://raw.githubusercontent.com/jinwyp/one_click_script/master/trojan_v2ray_install.sh</code>
+            </blockquote>
+            <p>Make the script executable:</p>
+            <blockquote>
+                <code>chmod +x trojan_v2ray_install.sh</code>
+            </blockquote>
+            <p>Run the script.</p>
+            <blockquote>
+                <code>./trojan_v2ray_install.sh</code>
+            </blockquote>
+            <p>You will see the main menu:</p><img src="../images/trojan-go-main-menu.png" alt="Trojan-Go one-click-script main menu">
+            <p>Choose option <code>6</code> to install Trojan-Go.</p>
+            <p>After some initial installs, you are prompted to enter the fully qualified domain name of your server. CDN proxying should be turned off at this stage.</p>
+            <blockquote>
+                <code>请输入绑定到本VPS的域名 例如www.xxx.com: (此步骤请关闭CDN后安装)</code>
+            </blockquote>
+            <p>Enter your server’s fully qualified domain name.</p>
+            <p>Next, you are asked if you want to apply for a certificate. The default is to apply for a certificate automatically. If you have a second installation or an
+            existing certificate, you can choose No.</p>
+            <blockquote>
+                <code>是否申请证书? 默认为自动申请证书,如果二次安装或已有证书可以选否 请输入[Y/n]:</code>
+            </blockquote>
+            <p>Answer <code>y</code>.</p>
+            <p>The script asks if you want it to check whether the IP pointed to by the fully qualified domain name is correct. If CDN proxying is turned on and it is inconvenient
+            to turn it off, you can choose No here.</p>
+            <blockquote>
+                <code>是否检测域名指向的IP正确 (默认检测，如果域名指向的IP不是本机器IP则无法继续. 如果已开启CDN不方便关闭可以选择否)<br>
+                是否检测域名指向的IP正确? 请输入[Y/n]:</code>
+            </blockquote>
+            <p>Enter <code>y</code> to check your DNS entry. The script then continues.</p>
+            <p>The default is to apply for a certificate through Letsencrypt.org. If the certificate application fails, for example, there are too many applications through
+            Letsencrypt.org in a day, you can choose whether to apply through BuyPass.com.</p>
+            <blockquote>
+                <code>默认通过Letsencrypt.org来申请证书, 如果证书申请失败, 例如一天内通过Letsencrypt.org申请次数过多, 可以选否通过BuyPass.com来申请.<br>
+                是否通过Letsencrypt.org来申请证书? 默认直接回车为是, 选否则通过BuyPass.com来申请, 请输入[Y/n]:</code>
+            </blockquote>
+            <p>Enter <code>y</code> to apply for your SSL certificate through Letsencrypt.org.</p>
+            <p>Next you are asked to enter a prefix for Trojan passwords. A number of random passwords and passwords with this prefix will be generated.</p>
+            <blockquote>
+                <code>请输入trojan密码的前缀? (会生成若干随机密码和带有该前缀的密码)</code>
+            </blockquote>
+            <p>Enter a prefix, e.g. <code>qwerty</code>.</p>
+            <p>At the end of the script’s run, your login details are displayed. They will look like this:</p>
+            <blockquote>
+                <code>Trojan-go 小火箭 Shadowrocket 链接地址</code>
+            </blockquote>
+            <blockquote>
+                <code>trojan://123456abcd@fully.qualified.domain.name:443?peer=fully.qualified.domain.name&amp;sni;=fully.qualified.domain.name&amp;plugin;=obfs-local;obfs=websocket;obfs-host=fully.qualified.domain.name;obfs-uri=/12345678#fully.qualified.domain.name_trojan_go_ws</code>
+            </blockquote>
+            <p>Copy these login details from your terminal emulator into a text editor on your PC such as Notepad.</p>
+            <p>Also identify the URL to download V2RayN, which is the Windows client. It will look like this:</p>
+            <blockquote>
+                <code>1 Windows 客户端下载： http://fully.qualified.domain.name/download/aabbccdd112233445566/v2ray-windows.zip</code>
+            </blockquote>
+            <h2><a id="2"></a>2. Windows Client</h2>
+            <p>Open a browser on your PC. Paste the client download URL into your browser address bar. Download the zip file.</p>
+            <p>Extract all files in the zip file.</p><img src="../images/trojan-go-v2rayn-folder.png" alt="V2RayN folder showing extracted files">
+            <p>Launch <code>v2rayN.exe</code>. Click on the icon in the system tray (bottom right of your desktop_ to bring up the V2RayN panel. Under Help, you can choose the
+            language English or Simplified Chinese.</p><img src="../images/trojan-go-v2rayn-panel.png" alt="V2RayN panel">
+            <p>Copy the generated <code>trojan://</code> URL from the script’s output into your PC clipboard.</p>
+            <p>In V2RayN do <strong>Ctrl</strong>+<strong>v</strong>, or select <strong>Servers</strong> &gt; <strong>Import bulk URL from clipboard</strong>.</p>
+            <p>Press <strong>Enter</strong> to start the connection. Look for connection messages in the box at the bottom of your V2RayN panel.</p>
+            <p>You can either specify system-wide proxying in Windows <strong>Settings</strong>, or you can specify proxying at the level of the individual browser. We will use
+            the Firefox browser as our example.</p>
+            <p>Launch Firefox. From the hamburger menu, open <strong>Settings</strong>. Open the <strong>Network Settings</strong>. Configure Firefox like this:</p>
+            <ul>
+                <li>Select <strong>Manual proxy configuration</strong></li>
+                <li>SOCKS host <code>127.0.0.1</code></li>
+                <li>Port <code>10808</code> (note that this is the default in V2RayN, and not the common <code>1080</code>)</li>
+                <li>Select <strong>SOCKS v5</strong></li>
+                <li>Select <strong>Proxy DNS when using SOCKS v5</strong></li>
+            </ul>
+            <p>Click <strong>OK</strong>.</p>
+            <p>Now visit <a href="https://www.dnsleaktest.com/" target="_blank">https://www.dnsleaktest.com</a> in Firefox to check that your are using your remote proxy server
+            and not your local PC to access the Internet.</p>
+            <p>At this stage, you can optionally turn on CDN proxying and re-test your server.</p>
+            <p><em>Updated 2021-06-14</em></p>
+        </div>
+    </div>
+    <div id="footer">
+        <div class="content">
+            <p>This site is provided for information only. It cannot replace the advice of a trained security professional. If lives or safety depend on your security, please seek
+            the advice of an expert.</p>
+        </div>
+    </div>
+</body>
+</html>
